@@ -179,6 +179,27 @@ async function verify(companyId) {
   const companiesA = await a.json("/api/companies");
   check("user A sees the company through the API", Array.isArray(companiesA.data) && companiesA.data.some((c) => c.id === companyId));
 
+  // US2 / T024: shared workspace, personal attribution, private task isolation.
+  const openIssue = await a.json(`/api/companies/${companyId}/issues`, "POST", { title: "Open task from A" });
+  const privateIssue = await a.json(`/api/companies/${companyId}/issues`, "POST", {
+    title: "Private task from A",
+    visibility: "private",
+  });
+  check("A creates an open and a private task", openIssue.status === 201 && privateIssue.status === 201, `${openIssue.status}/${privateIssue.status} ${JSON.stringify(openIssue.data).slice(0, 160)}`);
+  const openId = openIssue.data?.id;
+  const privateId = privateIssue.data?.id;
+  check("tasks are attributed to A", openIssue.data?.createdByUserId === userA, String(openIssue.data?.createdByUserId));
+  const listB = await b.json(`/api/companies/${companyId}/issues`);
+  const idsB = Array.isArray(listB.data) ? listB.data.map((issue) => issue.id) : [];
+  check("B sees A's open task in the shared company", idsB.includes(openId), `${idsB.length} visible`);
+  check("B does not see A's private task in the list", !idsB.includes(privateId));
+  const directB = await b.json(`/api/issues/${privateId}`);
+  check("B gets 404 when opening A's private task directly", directB.status === 404, `status ${directB.status}`);
+  const directA = await a.json(`/api/issues/${privateId}`);
+  check("A can open their own private task", directA.status === 200, `status ${directA.status}`);
+  const createdBy = sql(`select actor_id from activity_log where entity_id='${openId}' and action='issue.created' limit 1`);
+  check("activity log attributes the task creation to A", createdBy === userA, createdBy);
+
   const joinedLogs = sql(`select count(*) from activity_log where company_id='${companyId}' and action='company_membership.sso_joined'`);
   check("one sso_joined activity entry per new member", joinedLogs === "2", joinedLogs);
 
