@@ -22,6 +22,12 @@ case "$name" in
       *" exec -T postgres pg_dump "*)
         for db in paperclip keycloak; do case "$args" in *" $db "*) echo "DUMP:$db";; esac; done ;;
       *" exec -T paperclip tar "*) echo "TAR-ARCHIVE" ;;
+      *" exec -T --user node paperclip "*)
+        if [ "${'${FAKE_INVITE_FAILS:-0}'}" = "1" ]; then
+          echo "■  No config found"
+        else
+          printf '│\n◆  Created bootstrap CEO invite.\n│  Invite URL: \033[36mhttps://agents.example.cn/invite/pcp_bootstrap_abc123\033[39m\n'
+        fi ;;
       *" compose "*" up "*) exit "${'${FAKE_COMPOSE_UP_EXIT:-0}'}" ;;
     esac ;;
   curl)
