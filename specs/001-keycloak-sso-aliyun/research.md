@@ -216,6 +216,17 @@
   - ECS 规格按同时运行的员工数估算：每个 Claude Code 进程约占几百 MB 到 1 GB 内存，4 vCPU / 16 GB 可支撑同时运行数个。
   - **待实测**：`claude_local` 自带的轻量沙箱——`filesystemScope` / `networkScope` 使用 bubblewrap（`bwrap`）把子进程的文件访问限制在自身工作区、网络按白名单放行（`packages/adapters/claude-local/src/server/execute.ts:574-600`）。bwrap 在 Docker 内通常需要额外权限（允许用户命名空间等）；若可用，给处理敏感内容的员工开启 `filesystemScope`。
 
+- **bwrap 实测结果（T022，2026-10-09）**：在生产镜像同一基础镜像 `node:24-trixie-slim` 中，以非 root 用户、按 Paperclip 实际参数（`packages/adapter-utils/src/local-process-sandbox.ts:380-420`：`--unshare-pid --tmpfs / --proc /proc --dev /dev ... --bind <workspace> --unshare-net`）测试：
+
+  | 容器配置 | 结果 |
+  |---|---|
+  | 生产镜像本身 | ❌ 未安装 bubblewrap（`Dockerfile` 中没有） |
+  | Docker 默认安全配置 | ❌ `No permissions to create a new namespace` |
+  | `seccomp=unconfined` | ❌ `Can't mount proc on /proc: Operation not permitted` |
+  | `seccomp=unconfined` + `systempaths=unconfined` | ✅ 沙箱生效：agent-a 只看到自己的工作区，读不到 agent-b 的文件 |
+
+  **决定**：首期**不开启**。开启需要同时放宽整个 Paperclip 容器的两项加固（关闭 seccomp 系统调用过滤、取消 `/proc` 路径屏蔽），还要做派生镜像，换来的只是可信 agent 之间的文件隔离，不划算。需要时的开启方式（不在首期交付）：派生镜像 `FROM <paperclip 镜像>` 并 `apt-get install bubblewrap`；Compose 覆盖文件给 `paperclip` 服务加 `security_opt: [seccomp=unconfined, systempaths=unconfined]`；再给处理敏感内容的 agent 打开 `filesystemScope`。
+
 - **Alternatives considered**:
   - **SSH 执行目标**：让 agent 在另一台 ECS 上运行，隔离最彻底，但多一台机器的成本与运维，首期不选。
   - **沙箱插件（每次运行一个独立容器）**：Paperclip 已有 kubernetes、daytona、e2b、modal、cloudflare 等插件（`packages/plugins/sandbox-providers/`），配套镜像见 `docker/agent-runtime/`（如 `agent-runtime-claude`）。但没有"本机 Docker"插件；kubernetes 需要 ACK 集群，其余多为海外服务。留待迁移到 ACK 时采用 kubernetes 插件。

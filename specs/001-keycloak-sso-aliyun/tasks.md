@@ -104,7 +104,7 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 ### Spike for User Story 2
 
 - [ ] T021 [US2] 验证三家模型经 `claude_local` 可用（research R8 "待实测"）：在本地为 DeepSeek、MiniMax、Kimi 各建一个 `claude_local` agent，分别设置 `ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN`（`secret_ref`）、自定义模型名、`ANTHROPIC_SMALL_FAST_MODEL`，以及 `DISABLE_AUTOUPDATER=1`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`；各分派一个需要读写工作区文件的任务；记录准确的端点 URL、模型名、是否必须设置 `ANTHROPIC_SMALL_FAST_MODEL`、工具调用是否正常；不稳定的一家改用 `opencode_local` + `PAPERCLIP_OPENCODE_PROVIDERS` 复测；结论写入 `specs/001-keycloak-sso-aliyun/research.md` R8 的"实测结果"
-- [ ] T022 [P] [US2] 验证 bwrap 文件沙箱能否在 Paperclip 容器内使用（research R16 "待实测"）：用仓库 `Dockerfile` 的 production 镜像运行，给一个 `claude_local` agent 开启 `filesystemScope`，确认能运行且无法读取其他 agent 的工作区；记录所需的容器权限（如 `security_opt`、`cap_add`）；结论写入 research.md R16
+- [X] T022 [P] [US2] 验证 bwrap 文件沙箱能否在 Paperclip 容器内使用（research R16 "待实测"）：用仓库 `Dockerfile` 的 production 镜像运行，给一个 `claude_local` agent 开启 `filesystemScope`，确认能运行且无法读取其他 agent 的工作区；记录所需的容器权限（如 `security_opt`、`cap_add`）；结论写入 research.md R16
 
 ### Implementation for User Story 2
 
