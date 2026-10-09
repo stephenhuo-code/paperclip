@@ -16,7 +16,7 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 3. 测试通过后才能重构，重构后测试仍须通过。
 
 - 服务端、前端：Vitest（`pnpm test -- <文件>`）。
-- 部署脚本与 Compose 配置：bats-core + shellcheck + actionlint，统一通过 `deploy/aliyun/tests/run.sh` 在容器中运行，不给仓库新增 npm 依赖。
+- 部署脚本与 Compose 配置：Node 内置测试运行器（`node --test`）+ 假命令，外加 shellcheck、actionlint（官方 Docker 镜像），统一通过 `deploy/aliyun/tests/run.sh` 运行，不给仓库新增依赖。（原计划用 bats-core；实施时改为 `node --test`：bats 容器内没有 jq 也无法调用宿主机 docker，无法测试 `docker compose config` 的 JSON 输出。）
 - 每个实现任务描述末尾的"使 Txxx 通过"即其对应的红灯测试；没有对应测试的实现任务不得开始。
 - 无法自动化的部分（真实 Keycloak 登录、阿里云生产验收）以 quickstart 场景作为验收测试。
 
@@ -151,13 +151,13 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 
 > 先写测试并确认失败，再写脚本和配置
 
-- [ ] T032 [US4] 建立部署测试框架：`deploy/aliyun/tests/run.sh` 在容器中依次运行 shellcheck（`deploy/aliyun/scripts/*.sh`）、actionlint（`.github/workflows/deploy-aliyun.yml`）和 bats（`deploy/aliyun/tests/*.bats`）；`deploy/aliyun/tests/helpers/` 提供假的 `docker`、`curl`、`ossutil`、`pg_dump`、`openssl` 命令（放在 PATH 最前面，记录调用参数、按环境变量返回预设结果），以及临时目录形式的 `/opt/paperclip`；脚本通过 `PAPERCLIP_ROOT`、`DEPLOY_HEALTH_TIMEOUT_SECONDS`、`DEPLOY_HEALTH_INTERVAL_SECONDS` 环境变量允许测试覆盖路径与超时
-- [ ] T033 [P] [US4] 在 `deploy/aliyun/tests/deploy.bats` 中写测试：(a) `.env` 含 `ANTHROPIC_` 前缀的键时以 1 退出且不调用 `docker compose up`；(b) 健康检查返回 200、`status=="ok"` 且 `commit` 等于传入 SHA 时，`state/previous` 为旧版本、`state/current` 为新版本，以 0 退出；(c) `commit` 不匹配或超时时回滚到 `state/previous` 的版本并以 2 退出；(d) Keycloak `/health/ready` 不通时同样回滚；(e) 任何情况下标准输出和标准错误都不包含 `.env` 中的任一值
-- [ ] T034 [P] [US4] 在 `deploy/aliyun/tests/bootstrap.bats` 中写测试（只测密钥生成函数，安装 Docker 与挂盘步骤用假命令跳过）：生成 `env.example` 中列出的全部键；已存在的键值不被覆盖；文件权限为 600；输出中不出现生成的密钥值
-- [ ] T035 [P] [US4] 在 `deploy/aliyun/tests/backup.bats` 中写测试：对 `paperclip`、`keycloak` 两个库各调用一次 `pg_dump -Fc`；上传目标为 `${OSS_BACKUP_BUCKET}/<当天日期>/`；证书剩余有效期小于 7 天时以非 0 退出，大于等于 7 天时以 0 退出
-- [ ] T036 [P] [US4] 在 `deploy/aliyun/tests/restore.bats` 中写测试：调用顺序为 停止服务 → 下载 → 恢复两个库与数据卷 → 启动 → 健康检查；下载失败时以非 0 退出且不执行恢复
-- [ ] T037 [P] [US4] 在 `deploy/aliyun/tests/compose.bats` 中写测试：用 `env.example`（填入假值）与 `environments/production.env` 执行 `docker compose config` 成功；只有 `caddy` 发布端口（80、443）；`keycloak` 不发布 9000；`paperclip` 服务的环境变量中没有任何 `ANTHROPIC_` 前缀的键，且包含 contracts/deployment.md §5 列出的全部键；`keycloak-config` 的 `restart` 为 `"no"`，`caddy`、`paperclip`、`keycloak`、`postgres` 的 `restart` 为 `unless-stopped`；`env.example` 中不含 `ANTHROPIC_` 前缀的键
-- [ ] T038 [US4] 运行 `deploy/aliyun/tests/run.sh`，确认 T033–T037 全部因"脚本或配置不存在"而失败（红灯）
+- [X] T032 [US4] 建立部署测试框架：`deploy/aliyun/tests/run.sh` 在容器中依次运行 shellcheck（`deploy/aliyun/scripts/*.sh`）、actionlint（`.github/workflows/deploy-aliyun.yml`）和 `node --test`（`deploy/aliyun/tests/*.test.mjs`）；`deploy/aliyun/tests/helpers/` 提供假的 `docker`、`curl`、`ossutil`、`pg_dump`、`openssl` 命令（放在 PATH 最前面，记录调用参数、按环境变量返回预设结果），以及临时目录形式的 `/opt/paperclip`；脚本通过 `PAPERCLIP_ROOT`、`DEPLOY_HEALTH_TIMEOUT_SECONDS`、`DEPLOY_HEALTH_INTERVAL_SECONDS` 环境变量允许测试覆盖路径与超时
+- [X] T033 [P] [US4] 在 `deploy/aliyun/tests/deploy.test.mjs` 中写测试：(a) `.env` 含 `ANTHROPIC_` 前缀的键时以 1 退出且不调用 `docker compose up`；(b) 健康检查返回 200、`status=="ok"` 且 `commit` 等于传入 SHA 时，`state/previous` 为旧版本、`state/current` 为新版本，以 0 退出；(c) `commit` 不匹配或超时时回滚到 `state/previous` 的版本并以 2 退出；(d) Keycloak `/health/ready` 不通时同样回滚；(e) 任何情况下标准输出和标准错误都不包含 `.env` 中的任一值
+- [X] T034 [P] [US4] 在 `deploy/aliyun/tests/bootstrap.test.mjs` 中写测试（只测密钥生成函数，安装 Docker 与挂盘步骤用假命令跳过）：生成 `env.example` 中列出的全部键；已存在的键值不被覆盖；文件权限为 600；输出中不出现生成的密钥值
+- [X] T035 [P] [US4] 在 `deploy/aliyun/tests/backup-restore.test.mjs` 中写测试：对 `paperclip`、`keycloak` 两个库各调用一次 `pg_dump -Fc`；上传目标为 `${OSS_BACKUP_BUCKET}/<当天日期>/`；证书剩余有效期小于 7 天时以非 0 退出，大于等于 7 天时以 0 退出
+- [X] T036 [P] [US4] 在 `deploy/aliyun/tests/backup-restore.test.mjs` 中写测试：调用顺序为 下载 → 停止服务 → 恢复两个库与数据卷 → 启动 → 健康检查（先下载、成功后才停服务，避免下载失败时白白停机）；下载失败时以非 0 退出且不停服务、不执行恢复
+- [X] T037 [P] [US4] 在 `deploy/aliyun/tests/compose.test.mjs` 中写测试：用 `env.example`（填入假值）与 `environments/production.env` 执行 `docker compose config` 成功；只有 `caddy` 发布端口（80、443）；`keycloak` 不发布 9000；`paperclip` 服务的环境变量中没有任何 `ANTHROPIC_` 前缀的键，且包含 contracts/deployment.md §5 列出的全部键；`keycloak-config` 的 `restart` 为 `"no"`，`caddy`、`paperclip`、`keycloak`、`postgres` 的 `restart` 为 `unless-stopped`；`env.example` 中不含 `ANTHROPIC_` 前缀的键
+- [X] T038 [US4] 运行 `deploy/aliyun/tests/run.sh`，确认 T033–T037 全部因"脚本或配置不存在"而失败（红灯）
 
 ### Implementation for User Story 4
 
