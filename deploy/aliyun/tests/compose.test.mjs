@@ -97,6 +97,11 @@ describe("docker-compose.yml", () => {
     assert.equal(env.PAPERCLIP_ANNOUNCEMENTS_ENABLED, "false");
   });
 
+  it("keeps better-auth rate limiting on in production", () => {
+    // Empty means "use the default", which is enabled in authenticated mode.
+    assert.equal(config.services.paperclip.environment.PAPERCLIP_AUTH_RATE_LIMIT_ENABLED, "");
+  });
+
   it("never passes ANTHROPIC_* variables to any service", () => {
     for (const [name, service] of Object.entries(config.services)) {
       assert.deepEqual(envKeys(service).filter((key) => key.startsWith("ANTHROPIC_")), [], name);

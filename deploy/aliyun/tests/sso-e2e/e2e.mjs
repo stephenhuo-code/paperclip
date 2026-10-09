@@ -4,7 +4,15 @@
 //        node e2e.mjs signup-disabled   (server started with PAPERCLIP_AUTH_DISABLE_SIGN_UP=true)
 import { execFileSync } from "node:child_process";
 
-const APP = "http://localhost:3199";
+// Defaults target the standalone setup in run-all.sh; stack-smoke.sh overrides
+// them for the full docker-compose stack behind Caddy.
+const APP = process.env.E2E_APP_URL ?? "http://localhost:3199";
+const PG_CONTAINER = process.env.E2E_PG_CONTAINER ?? "pc-sso-e2e-postgres";
+const KC_CONTAINER = process.env.E2E_KC_CONTAINER ?? "pc-sso-e2e-keycloak";
+const REALM = process.env.E2E_KC_REALM ?? "dw";
+// Set to the bootstrap invite URL in public deployments, where the browser
+// first-admin claim is disabled.
+const BOOTSTRAP_INVITE_URL = process.env.E2E_BOOTSTRAP_INVITE_URL ?? "";
 const ORIGIN = { Origin: APP };
 const results = [];
 
@@ -15,12 +23,12 @@ function check(name, ok, detail = "") {
 
 function sql(query) {
   return execFileSync("docker", [
-    "exec", "pc-sso-e2e-postgres", "psql", "-U", "postgres", "-d", "paperclip", "-tA", "-c", query,
+    "exec", PG_CONTAINER, "psql", "-U", "postgres", "-d", "paperclip", "-tA", "-c", query,
   ]).toString().trim();
 }
 
 function kc(...args) {
-  return execFileSync("docker", ["exec", "pc-sso-e2e-keycloak", "/opt/keycloak/bin/kcadm.sh", ...args]).toString().trim();
+  return execFileSync("docker", ["exec", KC_CONTAINER, "/opt/keycloak/bin/kcadm.sh", ...args]).toString().trim();
 }
 
 class Browser {
@@ -82,6 +90,11 @@ async function ssoLogin(browser, username, password = "Passw0rd!") {
   let location = null;
   for (let step = 0; step < 4 && !location; step += 1) {
     const action = html.match(/id="kc-form-login"[^>]*action="([^"]+)"/)?.[1]?.replaceAll("&amp;", "&");
+    if (!action && step > 0) {
+      // Keycloak stopped on a required action (e.g. verify email): no app session.
+      const title = html.match(/<title>([^<]*)/)?.[1]?.trim() ?? "unknown";
+      return { target: `keycloak-required-action:${title}`, ms: Date.now() - started };
+    }
     if (!action) {
       const text = html.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 300);
       throw new Error(`Keycloak login form not found: ${text}`);
@@ -122,8 +135,14 @@ async function setup() {
         password: "BreakGlass#2026",
       });
   check("break-glass admin has an email and password session", adminAuth.status === 200, `status ${adminAuth.status}`);
-  const claim = await admin.json("/api/bootstrap/claim", "POST", {});
-  check("break-glass admin owns the instance", claim.status === 200 || (existingAdmin && claim.status === 409), `status ${claim.status}`);
+  if (BOOTSTRAP_INVITE_URL) {
+    const token = BOOTSTRAP_INVITE_URL.match(/\/invite\/([^/?#]+)/)?.[1];
+    const accept = await admin.json(`/api/invites/${token}/accept`, "POST", { requestType: "human" });
+    check("break-glass admin accepts the bootstrap invite", accept.status >= 200 && accept.status < 300, `status ${accept.status}`);
+  } else {
+    const claim = await admin.json("/api/bootstrap/claim", "POST", {});
+    check("break-glass admin owns the instance", claim.status === 200 || (existingAdmin && claim.status === 409), `status ${claim.status}`);
+  }
   let companyId = sql("select id from companies where name='Acme Digital Workforce' limit 1");
   if (!companyId) {
     const company = await admin.json("/api/companies", "POST", { name: "Acme Digital Workforce" });
@@ -218,8 +237,8 @@ async function verify(companyId) {
   check("re-login writes no extra sso_joined entries", logsAfter === "2", logsAfter);
 
   // FR-005: profile changes in Keycloak sync on the next login.
-  const kcUserA = kc("get", "users", "-r", "dw", "-q", "username=user-a", "--fields", "id", "--format", "csv", "--noquotes");
-  kc("update", `users/${kcUserA}`, "-r", "dw", "-s", "firstName=Alicia");
+  const kcUserA = kc("get", "users", "-r", REALM, "-q", "username=user-a", "--fields", "id", "--format", "csv", "--noquotes");
+  kc("update", `users/${kcUserA}`, "-r", REALM, "-s", "firstName=Alicia");
   const a2 = new Browser();
   await ssoLogin(a2, "user-a");
   const nameA = sql(`select name from "user" where id='${userA}'`);
@@ -232,12 +251,12 @@ async function verify(companyId) {
   check("session is gone after sign-out", !afterSignOut.data?.user);
 
   // FR-008: removing A from the organization blocks the next login.
-  const orgId = kc("get", "organizations", "-r", "dw", "--fields", "id", "--format", "csv", "--noquotes");
-  kc("delete", `organizations/${orgId}/members/${kcUserA}`, "-r", "dw");
+  const orgId = kc("get", "organizations", "-r", REALM, "--fields", "id", "--format", "csv", "--noquotes");
+  kc("delete", `organizations/${orgId}/members/${kcUserA}`, "-r", REALM);
   const a3 = new Browser();
   const loginA3 = await ssoLogin(a3, "user-a");
   check("A is rejected after removal from the organization (FR-008)", loginA3.target.includes("error=org_not_allowed"), loginA3.target);
-  kc("create", `organizations/${orgId}/members`, "-r", "dw", "-b", `"${kcUserA}"`);
+  kc("create", `organizations/${orgId}/members`, "-r", REALM, "-b", `"${kcUserA}"`);
 
   // SC-004: sessions last 24 hours.
   const ttl = Number(sql(`select extract(epoch from expires_at - created_at)::int from session where user_id='${userB}' order by created_at desc limit 1`));
@@ -255,7 +274,8 @@ async function verify(companyId) {
   const localId = sql("select id from \"user\" where email='local@example.cn'");
   const lou = new Browser();
   const louLogin = await ssoLogin(lou, "local-user");
-  check("unverified Keycloak email is not linked to the local account", louLogin.target.includes("error=") && !louLogin.target.endsWith(`${APP}/`), louLogin.target);
+  check("unverified Keycloak email is not linked to the local account",
+    louLogin.target.includes("error=") || louLogin.target.startsWith("keycloak-required-action:"), louLogin.target);
   check("local account has no Keycloak link", sql(`select count(*) from account where user_id='${localId}' and provider_id='keycloak'`) === "0");
 
   // FR-009: break-glass admin still signs in with a password.
