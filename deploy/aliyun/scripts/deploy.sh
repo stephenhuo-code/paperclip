@@ -30,7 +30,9 @@ rollback() {
 
 export PAPERCLIP_IMAGE_TAG="$TARGET_TAG"
 echo "deploying $TARGET_TAG (previous: ${PREVIOUS_TAG:-none})"
-compose pull --quiet || die "could not pull images for $TARGET_TAG"
+if [ "${DEPLOY_SKIP_PULL:-0}" != "1" ]; then
+  compose pull --quiet || die "could not pull images for $TARGET_TAG"
+fi
 compose up -d postgres keycloak || rollback
 compose --profile provision run --rm keycloak-config || rollback
 compose up -d --remove-orphans || rollback

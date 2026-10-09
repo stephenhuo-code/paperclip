@@ -65,9 +65,12 @@ keycloak_ready() {
 
 paperclip_ready() {
   local expected_commit="$1" body
+  local -a ca_args=()
+  # Local smoke tests trust Caddy's internal CA; production uses public certificates.
+  if [ -n "${DEPLOY_HEALTH_CA_FILE:-}" ]; then ca_args=(--cacert "$DEPLOY_HEALTH_CA_FILE"); fi
   # Resolve the public name to this host so the check goes through Caddy and
   # the real certificate without depending on hairpin NAT.
-  body="$(curl -fsS --max-time 10 --resolve "$APP_DOMAIN:443:127.0.0.1" \
+  body="$(curl -fsS --max-time 10 "${ca_args[@]}" --resolve "$APP_DOMAIN:443:127.0.0.1" \
     "https://$APP_DOMAIN/api/health" 2>/dev/null)" || return 1
   [[ "$body" == *'"status":"ok"'* && "$body" == *"\"commit\":\"$expected_commit\""* ]]
 }
