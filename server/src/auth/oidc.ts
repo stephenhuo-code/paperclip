@@ -214,7 +214,7 @@ export async function reconcileOidcMemberships(
 
 export interface OidcAuthOptions {
   plugins: BetterAuthPlugin[];
-  options: Pick<BetterAuthOptions, "user" | "databaseHooks">;
+  options: Pick<BetterAuthOptions, "user" | "databaseHooks" | "session" | "account">;
 }
 
 function profileString(profile: Record<string, unknown>, key: string): string | undefined {
@@ -232,11 +232,14 @@ function profileString(profile: Record<string, unknown>, key: string): string | 
  * organizations are held by email until `user.create.after` fires.
  */
 export function buildOidcAuthOptions(
-  config: { authOidc?: OidcConfig | null },
+  config: { authOidc?: OidcConfig | null; authSessionTtlSeconds?: number },
   deps: OidcMembershipDeps,
 ): OidcAuthOptions {
+  const sessionOptions = config.authSessionTtlSeconds
+    ? { session: { expiresIn: config.authSessionTtlSeconds } }
+    : {};
   const oidc = config.authOidc;
-  if (!oidc) return { plugins: [], options: {} };
+  if (!oidc) return { plugins: [], options: sessionOptions };
 
   const pendingOrganizationsByEmail = new Map<string, string[]>();
 
@@ -261,6 +264,12 @@ export function buildOidcAuthOptions(
   return {
     plugins: [genericOAuth({ config: [provider] })],
     options: {
+      ...sessionOptions,
+      // Link to an existing local account only when Keycloak vouches for the
+      // email. Keycloak is deliberately not a trusted provider (that would
+      // skip its email_verified check), and local email verification cannot
+      // be required because Paperclip's email sign-up never verifies email.
+      account: { accountLinking: { enabled: true, requireLocalEmailVerified: false } },
       user: {
         validateUserInfo: async ({ user, source }) => {
           const input = { user, source } as OidcUserInfoValidationInput;
@@ -300,13 +309,14 @@ interface OidcAccessDeps {
 }
 
 /**
- * Hook-in point for `createBetterAuthInstance`: adds the Keycloak plugin after
- * any existing plugins and installs the admission and membership hooks. A
- * no-op when OIDC is not configured.
+ * Hook-in point for `createBetterAuthInstance`: applies the configured session
+ * lifetime, adds the Keycloak plugin after any existing plugins and installs
+ * the admission, membership and account-linking options. A no-op when neither
+ * OIDC nor a session lifetime is configured.
  */
 export function applyOidcAuthOptions(
   authConfig: Record<string, unknown>,
-  config: { authOidc?: OidcConfig | null },
+  config: { authOidc?: OidcConfig | null; authSessionTtlSeconds?: number },
   deps: OidcAccessDeps,
 ): void {
   const { plugins, options } = buildOidcAuthOptions(config, {
@@ -315,12 +325,16 @@ export function applyOidcAuthOptions(
     setPrincipalGrants: (...args) => deps.access.setPrincipalGrants(...args),
     logActivity: (input) => deps.logActivity(input),
   });
+  if (options.session) {
+    authConfig.session = { ...(authConfig.session as object | undefined), ...options.session };
+  }
   if (plugins.length === 0) return;
 
   const existing = Array.isArray(authConfig.plugins) ? (authConfig.plugins as BetterAuthPlugin[]) : [];
   authConfig.plugins = [...existing, ...plugins];
   authConfig.user = { ...(authConfig.user as object | undefined), ...options.user };
   authConfig.databaseHooks = { ...(authConfig.databaseHooks as object | undefined), ...options.databaseHooks };
+  authConfig.account = { ...(authConfig.account as object | undefined), ...options.account };
 }
 
 /**

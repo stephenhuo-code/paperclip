@@ -27,6 +27,7 @@ export function AuthPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [ssoError, setSsoError] = useState<string | null>(null);
+  const [showBreakGlass, setShowBreakGlass] = useState(false);
   const errorId = "auth-error";
 
   const nextPath = useMemo(
@@ -80,6 +81,9 @@ export function AuthPage() {
   });
 
   const oidc = healthQuery.data?.auth?.oidc;
+  // With enterprise sign-in on, email/password is only the break-glass admin
+  // path: folded away by default, and account creation is not offered.
+  const showPasswordForm = !oidc?.enabled || showBreakGlass;
   const ssoCallbackError = searchParams.get("error");
   const ssoMessage =
     ssoError
@@ -163,7 +167,25 @@ export function AuthPage() {
             </div>
           )}
 
+          {oidc?.enabled && (
+            <button
+              type="button"
+              className="mt-6 text-sm text-muted-foreground underline underline-offset-2"
+              aria-expanded={showBreakGlass}
+              aria-controls="break-glass-sign-in"
+              onClick={() => {
+                setError(null);
+                setMode("sign_in");
+                setShowBreakGlass(!showBreakGlass);
+              }}
+            >
+              管理员应急登录
+            </button>
+          )}
+
+          {showPasswordForm && (
           <form
+            id="break-glass-sign-in"
             className="mt-6 space-y-4"
             method="post"
             action={mode === "sign_up" ? "/api/auth/sign-up/email" : "/api/auth/sign-in/email"}
@@ -246,7 +268,9 @@ export function AuthPage() {
                   : "Create Account"}
             </Button>
           </form>
+          )}
 
+          {!oidc?.enabled && (
           <div className="mt-5 text-sm text-muted-foreground">
             {mode === "sign_in" ? "Need an account?" : "Already have an account?"}{" "}
             <button
@@ -260,6 +284,7 @@ export function AuthPage() {
               {mode === "sign_in" ? "Create one" : "Sign in"}
             </button>
           </div>
+          )}
         </div>
       </div>
 
