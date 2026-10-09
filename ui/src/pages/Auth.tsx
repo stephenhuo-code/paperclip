@@ -5,6 +5,7 @@ import { authApi } from "../api/auth";
 import { healthApi } from "../api/health";
 import { CloudSignIn } from "@/components/CloudSignIn";
 import { clearCloudSignInAttempt } from "@/lib/cloud-sign-in";
+import { redirectToSso } from "@/lib/sso-redirect";
 import { tenantSignInReturnPath } from "@/lib/cloudLinks";
 import { queryKeys } from "../lib/queryKeys";
 import { getRememberedInvitePath } from "../lib/invite-memory";
@@ -25,6 +26,7 @@ export function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [ssoError, setSsoError] = useState<string | null>(null);
   const errorId = "auth-error";
 
   const nextPath = useMemo(
@@ -77,6 +79,29 @@ export function AuthPage() {
     },
   });
 
+  const oidc = healthQuery.data?.auth?.oidc;
+  const ssoCallbackError = searchParams.get("error");
+  const ssoMessage =
+    ssoError
+    ?? (ssoCallbackError === "org_not_allowed"
+      ? "您的账号未被授权访问此平台，请联系管理员"
+      : ssoCallbackError
+        ? "企业登录失败，请重试"
+        : null);
+  const ssoMutation = useMutation({
+    mutationFn: async () => {
+      const next = new URLSearchParams({ next: nextPath });
+      const { url } = await authApi.signInSocial({
+        provider: oidc?.providerId ?? "keycloak",
+        callbackURL: nextPath,
+        errorCallbackURL: `/auth?${next.toString()}`,
+      });
+      redirectToSso(url);
+    },
+    onMutate: () => setSsoError(null),
+    onError: () => setSsoError("企业登录服务暂时不可用"),
+  });
+
   const canSubmit =
     email.trim().length > 0 &&
     password.trim().length > 0 &&
@@ -119,6 +144,24 @@ export function AuthPage() {
               ? "Use your email and password to access this instance."
               : "Create an account for this instance. Email confirmation is not required in v1."}
           </p>
+
+          {oidc?.enabled && (
+            <div className="mt-6 space-y-3">
+              <Button
+                type="button"
+                className="w-full"
+                disabled={ssoMutation.isPending}
+                onClick={() => ssoMutation.mutate()}
+              >
+                {oidc.label ?? "Sign in with SSO"}
+              </Button>
+              {ssoMessage && (
+                <p role="alert" className="text-xs text-destructive">
+                  {ssoMessage}
+                </p>
+              )}
+            </div>
+          )}
 
           <form
             className="mt-6 space-y-4"

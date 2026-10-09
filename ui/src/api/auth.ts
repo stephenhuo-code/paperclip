@@ -179,6 +179,13 @@ export const authApi = {
     await authPost("/sign-up/email", input);
   },
 
+  signInSocial: async (input: { provider: string; callbackURL: string; errorCallbackURL: string }) => {
+    const payload = await authPost("/sign-in/social", input);
+    const url = payload && typeof payload === "object" ? (payload as Record<string, unknown>).url : null;
+    if (typeof url !== "string" || !url) throw new Error("Sign-in provider did not return a redirect URL");
+    return { url };
+  },
+
   getProfile: async (): Promise<CurrentUserProfile> => {
     const res = await fetch("/api/auth/profile", {
       credentials: "include",

@@ -49,6 +49,10 @@ export type HealthStatus = {
    * settings-visibility registry). Absent when nothing is hidden.
    */
   hiddenSettings?: string[];
+  /** Enterprise (OIDC) sign-in; absent when it is not configured. */
+  auth?: {
+    oidc: { enabled: boolean; providerId?: string; label?: string };
+  };
 };
 
 export const healthApi = {
