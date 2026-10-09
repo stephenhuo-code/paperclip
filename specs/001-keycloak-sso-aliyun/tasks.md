@@ -108,7 +108,7 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 
 ### Implementation for User Story 2
 
-- [ ] T023 [US2] 在 `deploy/aliyun/README.md` 中新增"配置数字员工"一节：用表格给出三家模型的 adapter、环境变量、模型名（以 T021 实测为准）；写明三条约束——每个 agent 自配地址/密钥/模型名且密钥用公司密钥引用、服务器容器不设任何 `ANTHROPIC_*`、共享的 `/paperclip/.claude/settings.json` 不写 `ANTHROPIC_*` 且服务器上不执行 `claude login`；写明切换模型后需重置 agent 会话；若 T022 结论为可用，补充开启 `filesystemScope` 的方法
+- [X] T023 [US2] 在 `deploy/aliyun/README.md` 中新增"配置数字员工"一节：用表格给出三家模型的 adapter、环境变量、模型名（以 T021 实测为准）；写明三条约束——每个 agent 自配地址/密钥/模型名且密钥用公司密钥引用、服务器容器不设任何 `ANTHROPIC_*`、共享的 `/paperclip/.claude/settings.json` 不写 `ANTHROPIC_*` 且服务器上不执行 `claude login`；写明切换模型后需重置 agent 会话；若 T022 结论为可用，补充开启 `filesystemScope` 的方法
 - [X] T024 [US2] 按 quickstart.md 场景 3 第 3 步在本地验证：A 的公开任务 B 可见且创建者显示 A；A 的私有任务 B 在列表中不可见、直接访问返回 404；A、B 的活动记录分别归属本人；结果记录到 PR 描述草稿
 
 **Checkpoint**: 两名 SSO 用户可共享数字员工、私有任务隔离生效；三家模型各有一个可用的数字员工配置
