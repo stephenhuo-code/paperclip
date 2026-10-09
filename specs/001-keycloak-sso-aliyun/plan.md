@@ -85,15 +85,15 @@ paperclip/                                    （fork：stephenhuo-code/papercli
 │   ├── config.ts                 ✏️ 读取 PAPERCLIP_AUTH_OIDC_* 环境变量
 │   ├── routes/health.ts          ✏️ 健康检查接口返回 auth.oidc 信息
 │   └── __tests__/
-│       ├── auth-oidc.test.ts     ➕ 新增
-│       ├── better-auth.test.ts   ✏️ 补充用例
-│       └── health.test.ts        ✏️ 补充用例
+│       ├── auth-oidc.test.ts         ➕ 配置解析、组织准入、自动入公司
+│       ├── better-auth-oidc.test.ts  ➕ 插件接线、会话有效期、账号关联
+│       └── health-oidc.test.ts       ➕ 健康检查的 auth.oidc 字段
 ├── ui/src/
 │   ├── api/health.ts             ✏️ 类型新增 auth.oidc
 │   ├── api/auth.ts               ✏️ 新增 signInSocial()
 │   └── pages/
 │       ├── Auth.tsx              ✏️ 企业登录按钮、应急登录折叠区
-│       └── Auth.test.tsx         ✏️ 补充用例
+│       └── Auth.oidc.test.tsx    ➕ 登录页 OIDC 行为
 ├── deploy/aliyun/                ➕ 全部部署资产
 │   ├── README.md                 部署手册、数字员工配置、上游同步
 │   ├── docker-compose.yml        4 个常驻服务 + 1 个一次性任务（见下文"运行时服务"）
@@ -115,7 +115,7 @@ paperclip/                                    （fork：stephenhuo-code/papercli
 └── specs/001-keycloak-sso-aliyun/   本功能的规格、方案、任务文档
 ```
 
-上游原有文件只修改 7 个（`better-auth.ts`、`config.ts`、`health.ts`、`ui/src/api/health.ts`、`ui/src/api/auth.ts`、`Auth.tsx`、`DEPLOYMENT-MODES.md`）；测试文件只补充用例，不计入定制点。
+上游原有文件只修改 7 个（`better-auth.ts`、`config.ts`、`health.ts`、`ui/src/api/health.ts`、`ui/src/api/auth.ts`、`Auth.tsx`、`DEPLOYMENT-MODES.md`）；测试全部写在新文件中，不修改任何上游测试文件。
 
 ### 运行时服务（ECS 上的 Docker Compose）
 
