@@ -89,7 +89,7 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 - [X] T017 [P] [US1] 修改 `ui/src/api/health.ts`：响应类型新增 `auth?: { oidc: { enabled: boolean; providerId?: string; label?: string } }`（类型改动，由 T013 的编译与运行覆盖）
 - [X] T018 [P] [US1] 修改 `ui/src/api/auth.ts`：新增 `signInSocial({ provider, callbackURL, errorCallbackURL })`，复用 `authPost`（约 `:139`）调用 `POST /api/auth/sign-in/social`，返回 `{ url }`；使 T013 中"点击调用 `authApi.signInSocial`"的用例通过
 - [X] T019 [US1] 修改 `ui/src/pages/Auth.tsx`：读取 health 中的 `auth.oidc`，启用时显示以 `label` 为文案的主按钮，点击后 `window.location.href = url`（`callbackURL` 为登录前的目标路径，`errorCallbackURL` 为 `/auth?error=...`）；按 contracts/auth-oidc.md §3 显示三种错误提示，不出现空白页或无限加载；只用 `ui/src/index.css` 中的 token，不写硬编码颜色、px 或 Tailwind 方括号值；使 T013 通过
-- [ ] T020 [US1] 在本地 authenticated 模式下（`PAPERCLIP_DEPLOYMENT_MODE=authenticated`，连 T007 的 Keycloak 容器）手工验证 quickstart.md 场景 3 中"A、B 自动入公司""C 被拒绝且数据库无 C 的用户记录""退出登录返回成功"三条，并记录一次从点击企业登录到进入平台的耗时（SC-001 ≤30 秒），结果记录到 PR 描述草稿
+- [X] T020 [US1] 在本地 authenticated 模式下（`PAPERCLIP_DEPLOYMENT_MODE=authenticated`，连 T007 的 Keycloak 容器）手工验证 quickstart.md 场景 3 中"A、B 自动入公司""C 被拒绝且数据库无 C 的用户记录""退出登录返回成功"三条，并记录一次从点击企业登录到进入平台的耗时（SC-001 ≤30 秒），结果记录到 PR 描述草稿
 
 **Checkpoint**: 组织用户可单点登录并自动进入公司；非组织用户被拒绝
 

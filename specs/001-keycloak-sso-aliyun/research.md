@@ -52,7 +52,9 @@
 - **`ensureMembership` 会改写既有角色**：已存在的成员关系角色或状态不同时，它会**直接更新**（`server/src/services/access.ts:871-890`）。因此自动入公司必须先 `getMembership`，已存在就跳过，否则会把管理员降级（违反 FR-006）。
 - **默认角色与权限**：Paperclip 人类成员的角色是 `owner | admin | operator | viewer`，`"member"` 会被归一化为 `operator`；邀请的默认角色是 `operator`（`server/src/services/company-member-roles.ts:11-19,79-88`）。邀请流程在加成员后还会调用 `setPrincipalGrants` 写入 `grantsForHumanRole(role)` 默认权限（`server/src/routes/access.ts:3127-3160`）。SSO 自动入公司**照搬这一行为**：角色 `operator` + `grantsForHumanRole("operator")`，与"接受一个默认邀请"完全一致。
 - **R2 风险核查（OAuth 用户能否自设密码）**：`/set-password` 是 `createAuthEndpoint.serverOnly`，不对外开放（`api/routes/update-user.mjs:196`）；`/request-password-reset` 要求配置 `emailAndPassword.sendResetPassword`，Paperclip 没有配置（`server/src` 中无此配置）。因此**通过 Keycloak 建立的账号无法自行设置密码**，FR-009 无需额外代码。
-- **仍需真实 Keycloak 验证**：`organization` 声明的实际形态（列表还是对象）——代码同时兼容两种，在 T020 / T043 中用真实 Keycloak 确认。
+- **真实 Keycloak 验证（T020，Keycloak 26.8.0）**：ID token 中的声明为**列表形态** `"organization": ["acme"]`，`email_verified` 正确传递。另外两点实测发现：
+  - 启用 Organizations 的 realm 默认使用**两步登录**（先输用户名，再输密码）。
+  - 内置的 `organization` scope 是客户端的**可选** scope；Paperclip 登录时会显式申请它，所以 realm.yaml 不需要把它设为默认 scope。
 
 ## R4. 角色、首个管理员和应急登录（FR-006、FR-009、FR-022）
 
