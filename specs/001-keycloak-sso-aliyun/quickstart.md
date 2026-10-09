@@ -32,7 +32,7 @@ docker compose --env-file .env.local up -d
 
 ## 2. 首个管理员与应急登录（FR-009、FR-022）
 
-1. `docker compose exec paperclip pnpm paperclipai auth bootstrap-ceo` → 得到一次性邀请链接。
+1. `deploy/aliyun/scripts/bootstrap-invite.sh <env>` → 得到一次性邀请链接（本地全栈见 `deploy/aliyun/tests/stack-smoke/stack-smoke.sh`，它自动完成这一步）。
 2. 用邮箱密码注册应急管理员并接受邀请，创建第一个公司，记下公司 ID。
 3. 把 `{"acme":"<公司ID>"}` 写入 `PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP`，并设 `PAPERCLIP_AUTH_DISABLE_SIGN_UP=true`，重启 `paperclip`。
 

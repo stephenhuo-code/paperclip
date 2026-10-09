@@ -33,7 +33,7 @@ The change adds lines to seven upstream files and removes no lines. All other co
 - Read the new settings in `server/src/config.ts` (6 added lines).
 - Add public `auth.oidc` (`enabled`, `providerId`, `label`) to `/api/health` when SSO is on (`server/src/routes/health.ts`, 4 added lines). Responses without SSO do not change.
 - Add the enterprise sign-in button, error messages and a folded break-glass password form to `ui/src/pages/Auth.tsx`, with `signInSocial` in `ui/src/api/auth.ts` and the health type in `ui/src/api/health.ts`.
-- Add `deploy/aliyun/`: Docker Compose stack, Caddyfile, idempotent Keycloak provisioning (`keycloak/provision.sh`), `bootstrap.sh`, `deploy.sh` (health gate on the commit, automatic rollback), `backup.sh`, `restore.sh`, `remote-deploy.sh`, `ci-run-command.sh`, and an operations runbook.
+- Add `deploy/aliyun/`: Docker Compose stack, Caddyfile, idempotent Keycloak provisioning (`keycloak/provision.sh`), `bootstrap.sh`, `bootstrap-invite.sh`, `deploy.sh` (health gate on the commit, automatic rollback), `backup.sh`, `restore.sh`, `remote-deploy.sh`, `ci-run-command.sh`, and an operations runbook.
 - Add `.github/workflows/deploy-aliyun.yml`: build the image and deploy assets, mirror base images to ACR, deploy through Cloud Assistant.
 - Add an OIDC section to `doc/DEPLOYMENT-MODES.md`.
 - Add the spec, plan, research, contracts, tasks and verification records in `specs/001-keycloak-sso-aliyun/`.
@@ -43,12 +43,13 @@ The change adds lines to seven upstream files and removes no lines. All other co
 - Unit tests (written first, then made to pass):
   - `pnpm test -- server/src/__tests__/auth-oidc.test.ts server/src/__tests__/better-auth-oidc.test.ts server/src/__tests__/health-oidc.test.ts ui/src/pages/Auth.oidc.test.tsx`
   - The existing better-auth, managed-loopback, credential sign-up, health and auth page tests pass without changes.
-- Deploy asset checks: `deploy/aliyun/tests/run.sh` (shellcheck, actionlint, node:test for the scripts and the rendered Compose config).
+- Deploy asset checks: `deploy/aliyun/tests/run.sh` (shellcheck, actionlint and 40 node:test cases for the scripts and the rendered Compose config).
 - Real Keycloak 26.8.0:
   - `deploy/aliyun/tests/keycloak-provision-test.sh`: 17/17 (idempotent provisioning, owned fields restored, users and memberships kept).
   - `deploy/aliyun/tests/sso-e2e/run-all.sh`: 38/38 browser-style OIDC checks (fail closed without a map, admission, company join and grants, private task isolation, role preservation, profile sync, sign-out, removal from the organization, 24-hour session, verified-email linking, unverified-email refusal, disabled email sign-up, break-glass sign-in).
-- Full local stack: `deploy/aliyun/tests/stack-smoke/stack-smoke.sh <tag>` — RESULT_PENDING
-- Repository checks: `pnpm -r typecheck` passes. `pnpm test:run` — RESULT_PENDING. `pnpm build` — RESULT_PENDING. `pnpm check:token-gates` passes.
+- Full local stack: `deploy/aliyun/tests/stack-smoke/stack-smoke.sh <tag>` runs the real Compose file, `deploy.sh`, Keycloak provisioning and Caddy with internal TLS. Result: 45/45 (first admin through the bootstrap invite, the SSO end-to-end checks over https, a redeploy, and a failed rollout that rolls back).
+- Repository checks: `pnpm -r typecheck` passes. `pnpm build` passes. `pnpm check:token-gates` passes.
+- `pnpm test:run`: 17,394 passed and 8 failed. One failure came from this branch (a `pnpm paperclipai` command in a spec document) and is fixed. The other 7 failures are in `git-credentials.test.ts` and `workspace-runtime.test.ts`. The same 7 tests fail on the upstream base commit without this branch, so they depend on the local machine.
 - Not run: production acceptance on Alibaba Cloud and the DeepSeek, MiniMax and Kimi agent checks. They need cloud resources and API keys (tasks T021, T050, T051).
 - Details: `specs/001-keycloak-sso-aliyun/verification.md`.
 

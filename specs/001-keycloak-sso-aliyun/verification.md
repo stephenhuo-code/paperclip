@@ -95,3 +95,20 @@ US3 的单元测试（会话有效期、账号关联配置、应急登录折叠�
 3. **realm 开启 `verifyEmail` 后**，邮箱未验证的用户会停在 Keycloak 的"验证邮箱"页，不会回到 Paperclip，也就不会发生账号关联；e2e 检查已兼容这种结果。
 
 修改后重跑：`sso-e2e/run-all.sh` 仍为 38/38，`deploy/aliyun/tests/run.sh`（shellcheck、actionlint、node:test 40 项）通过。
+
+## T057 交付前全量检查（2026-10-09）
+
+| 命令 | 结果 |
+|---|---|
+| `pnpm -r typecheck` | ✅ 通过（0 个错误） |
+| `pnpm test:run` | 840 个测试文件 / 17,504 个用例：**17,394 通过、8 失败**、102 跳过 |
+| `pnpm build` | ✅ 通过 |
+| `pnpm check:token-gates` | ✅ 通过 |
+| `deploy/aliyun/tests/run.sh` | ✅ shellcheck、actionlint、node:test 40 项通过 |
+
+8 个失败的处理：
+
+- **1 个由本分支引起，已修复**：`cli-invocation-safety.test.ts` 禁止文档出现不在白名单中的 `pnpm paperclipai` 命令，`specs/.../quickstart.md` 写了 `pnpm paperclipai auth bootstrap-ceo`。已改为 `deploy/aliyun/scripts/bootstrap-invite.sh`，该文件 40/40 通过。
+- **7 个与本分支无关**：`git-credentials.test.ts`（2 个，真实 git 凭据助手）和 `workspace-runtime.test.ts`（5 个，工作区初始化脚本）。在**未包含本分支任何改动的上游提交** `b9750b152`（git worktree + 离线安装依赖）上运行同样两个文件，**失败的 7 个用例完全相同**。它们依赖本机的 git 配置与环境，属于本机环境 / 上游已有问题。
+
+未运行：阿里云生产验收（T050、T051）与三家模型实测（T021），需要云资源与 API Key。

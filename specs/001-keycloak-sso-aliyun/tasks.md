@@ -198,9 +198,9 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 
 - [X] T054 [P] 在 `doc/DEPLOYMENT-MODES.md` 中新增 "OIDC single sign-on" 小节（追加，不重写原文）：说明 `PAPERCLIP_AUTH_OIDC_*`、`PAPERCLIP_AUTH_SESSION_TTL_SECONDS` 变量、Keycloak 回调地址 `/api/auth/callback/keycloak`、组织准入与自动入公司的行为、与 `PAPERCLIP_AUTH_DISABLE_SIGN_UP` 配合实现应急登录
 - [X] T055 [P] 确认并在 `deploy/aliyun/docker-compose.yml` 中加入关闭 Paperclip 第一方遥测的环境变量（research R15；只改部署配置，不改 `packages/shared/src/telemetry/` 代码），同时确认 `PAPERCLIP_ANNOUNCEMENTS_ENABLED=false`、`NPM_CONFIG_REGISTRY=https://registry.npmmirror.com` 已设置
-- [ ] T056 运行 `pnpm check:token-gates`，修复 `ui/src/pages/Auth.tsx` 中的任何违规
-- [ ] T057 运行交付前全量检查 `pnpm -r typecheck`、`pnpm test:run`、`pnpm build`、`deploy/aliyun/tests/run.sh`，全部通过；无法运行的项在 PR 中说明原因
-- [ ] T058 按 `.github/PULL_REQUEST_TEMPLATE.md` 填写全部章节（Thinking Path、What Changed、Verification、Risks、Model Used、Checklist），汇总 T020、T024、T030、T050、T051 的验证记录
+- [X] T056 运行 `pnpm check:token-gates`，修复 `ui/src/pages/Auth.tsx` 中的任何违规
+- [X] T057 运行交付前全量检查 `pnpm -r typecheck`、`pnpm test:run`、`pnpm build`、`deploy/aliyun/tests/run.sh`，全部通过；无法运行的项在 PR 中说明原因
+- [X] T058 按 `.github/PULL_REQUEST_TEMPLATE.md` 填写全部章节（Thinking Path、What Changed、Verification、Risks、Model Used、Checklist），汇总 T020、T024、T030、T050、T051 的验证记录
 
 ---
 
