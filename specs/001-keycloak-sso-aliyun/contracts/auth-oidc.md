@@ -74,7 +74,7 @@ authenticated 模式下由 better-auth 处理，返回 `200 {"success": true}`�
   - `sign-in/social` 请求失败（Keycloak 不可达等）时显示："企业登录服务暂时不可用"，不出现空白页或无限加载。
 - `auth.oidc.enabled === false`：页面与上游完全一致。
 
-## 4. Keycloak 端契约（由 `deploy/aliyun/keycloak/realm.yaml` 保证）
+## 4. Keycloak 端契约（由 `deploy/aliyun/keycloak/provision.sh` 保证）
 
 - realm 启用 Organizations；存在别名与映射键一致的组织。
 - 客户端 `paperclip`：confidential，Standard Flow 开启，PKCE S256，Redirect URI 见上文，Web Origin 为平台域名。

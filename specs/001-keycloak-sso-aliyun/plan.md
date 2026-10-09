@@ -18,7 +18,7 @@
 
 **Language/Version**: TypeScript（Node.js 24，仓库现有工具链）；部署脚本为 Bash + Docker Compose YAML
 
-**Primary Dependencies**: better-auth 1.7.2（已有，含 `genericOAuth` 插件）；Keycloak 26.x；keycloak-config-cli 6.5.x；Caddy 2；PostgreSQL 17
+**Primary Dependencies**: better-auth 1.7.2（已有，含 `genericOAuth` 插件）；Keycloak 26.8（固定 `26.8.0`；Keycloak 初始化用镜像自带的 `kcadm.sh`）；Caddy 2；PostgreSQL 17
 
 **Storage**: PostgreSQL 17（ECS 上自建容器，`paperclip` 与 `keycloak` 两个库）；Paperclip 数据卷 `/paperclip`；备份到阿里云 OSS
 
@@ -101,7 +101,7 @@ paperclip/                                    （fork：stephenhuo-code/papercli
 │   ├── env.example               密钥键名模板（无值，不含 ANTHROPIC_*）
 │   ├── environments/
 │   │   └── production.env        非敏感参数：域名、地域、镜像仓库等
-│   ├── keycloak/realm.yaml       realm、组织、客户端定义（keycloak-config-cli 格式）
+│   ├── keycloak/provision.sh     幂等初始化 realm、组织、客户端（用 Keycloak 镜像自带的 kcadm.sh）
 │   ├── postgres/init.sh          首次初始化 paperclip、keycloak 两个库和账号
 │   ├── scripts/
 │   │   ├── bootstrap.sh          ECS 首次初始化
@@ -158,11 +158,11 @@ Docker 数据卷：paperclip-data（附件、工作区、密钥主密钥）、pg
 
 ## Implementation Phases（供 /speckit-tasks 拆解）
 
-1. **验证先行（spike）**：确认 `validateUserInfo` / `user.create.after` 中可用字段；确认 Keycloak `organization` 声明格式；确认三家模型 Anthropic 兼容端点、模型名、工具调用兼容性，以及 Claude Code CLI 在大陆可用、是否需要 `ANTHROPIC_SMALL_FAST_MODEL`（R8）；确认 bwrap 文件沙箱能否在容器内使用（R16）；确认 config-cli 与 Keycloak 版本兼容。
+1. **验证先行（spike）**：确认 `validateUserInfo` / `user.create.after` 中可用字段；确认 Keycloak `organization` 声明格式；确认三家模型 Anthropic 兼容端点、模型名、工具调用兼容性，以及 Claude Code CLI 在大陆可用、是否需要 `ANTHROPIC_SMALL_FAST_MODEL`（R8）；确认 bwrap 文件沙箱能否在容器内使用（R16）；确认 Keycloak 初始化方式（T031 结论：config-cli 不支持组织，改用 kcadm）。
 2. **登录接入（US1、US3）**：`oidc.ts` + `config.ts` + `better-auth.ts` + 单元测试。
 3. **登录页（US1）**：health 字段 + UI 按钮 + 密码表单折叠 + token gates。
 4. **本地全栈冒烟**：在本机用 `deploy/aliyun/docker-compose.yml` 起全栈（Caddy 用本地证书），跑通 quickstart 场景 1~4。
-5. **阿里云部署（US4）**：bootstrap/deploy/backup/restore 脚本 + realm.yaml + 工作流 + README。
+5. **阿里云部署（US4）**：bootstrap/deploy/backup/restore 脚本 + keycloak/provision.sh + 工作流 + README。
 6. **生产验收**：按 quickstart 场景 5~8 在真实 ECS 上验收；配置三家模型的数字员工（SC-002a）。
 7. **收尾**：文档、`pnpm -r typecheck && pnpm test:run && pnpm build`。
 

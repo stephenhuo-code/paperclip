@@ -41,7 +41,7 @@
 
 ### R2/R3 实测结果（T007，2026-10-09，读 better-auth 1.7.2 源码）
 
-- **原始声明在哪里**：OAuth 回调里，`validateUserInfo` 收到的 `source.oauth.profile` 是 `providerResult.data`；genericOAuth 有 ID token 时就用**解码后的 ID token 声明**，没有才去请求 userinfo 端点（`plugins/generic-oauth/index.mjs:37-47,215-225`）。因此 Keycloak 的 Organization Membership mapper 必须勾选"Add to ID token"（默认就是勾选的），realm.yaml 里要显式写明。
+- **原始声明在哪里**：OAuth 回调里，`validateUserInfo` 收到的 `source.oauth.profile` 是 `providerResult.data`；genericOAuth 有 ID token 时就用**解码后的 ID token 声明**，没有才去请求 userinfo 端点（`plugins/generic-oauth/index.mjs:37-47,215-225`）。因此 Keycloak 的 Organization Membership mapper 必须勾选"Add to ID token"（默认就是勾选的，T020 实测 ID token 中确有该声明），初始化脚本保持内置 mapper 的默认配置即可。
 - **各来源下 `user.id` 是否可用**：
   - `sign-in`（已有用户再次登录）：✅ 有 `user.id`（`oauth2/link-account.mjs:137-147`）
   - `link-account`（按已验证邮箱关联已有本地账号）：✅ 有 `user.id`（`:92-102`）
@@ -54,7 +54,7 @@
 - **R2 风险核查（OAuth 用户能否自设密码）**：`/set-password` 是 `createAuthEndpoint.serverOnly`，不对外开放（`api/routes/update-user.mjs:196`）；`/request-password-reset` 要求配置 `emailAndPassword.sendResetPassword`，Paperclip 没有配置（`server/src` 中无此配置）。因此**通过 Keycloak 建立的账号无法自行设置密码**，FR-009 无需额外代码。
 - **真实 Keycloak 验证（T020，Keycloak 26.8.0）**：ID token 中的声明为**列表形态** `"organization": ["acme"]`，`email_verified` 正确传递。另外两点实测发现：
   - 启用 Organizations 的 realm 默认使用**两步登录**（先输用户名，再输密码）。
-  - 内置的 `organization` scope 是客户端的**可选** scope；Paperclip 登录时会显式申请它，所以 realm.yaml 不需要把它设为默认 scope。
+  - 内置的 `organization` scope 是客户端的**可选** scope；Paperclip 登录时会显式申请它，所以 Keycloak 初始化脚本不需要把它设为默认 scope。
 
 ## R4. 角色、首个管理员和应急登录（FR-006、FR-009、FR-022）
 
@@ -138,8 +138,8 @@
   - `paperclip`（仓库现有 `Dockerfile`，`--target production`）
   - `keycloak`（`quay.io/keycloak/keycloak:26.x`，固定补丁版本）
   - `postgres`（`postgres:17-alpine`，两个库：`paperclip`、`keycloak`，各自独立账号）
-  - `keycloak-config`（`adorsys/keycloak-config-cli`，一次性任务）
-- **镜像来源**: 在 GitHub Actions（境外 runner）构建 Paperclip 镜像，并把所有基础镜像（keycloak、postgres、caddy、config-cli）同步到阿里云 ACR 个人版；ECS 通过同地域 VPC 地址 `registry-vpc.cn-<region>.aliyuncs.com` 拉取。
+  - `keycloak-config`（Keycloak 镜像本身 + `keycloak/provision.sh`，一次性任务）
+- **镜像来源**: 在 GitHub Actions（境外 runner）构建 Paperclip 镜像，并把所有基础镜像（keycloak、postgres、caddy）同步到阿里云 ACR 个人版；ECS 通过同地域 VPC 地址 `registry-vpc.cn-<region>.aliyuncs.com` 拉取。
 - **Rationale**: 大陆访问 Docker Hub、quay.io、ghcr.io 均不稳定；在境外构建避开 npm、apt、Rust 工具链（`Dockerfile:54-123`）的镜像源问题。
 - **Alternatives considered**: 在 ECS 本地构建（需配置 npm/apt/crates 三套镜像源，构建慢且易失败）；云效流水线（可行，但与上游现有 `.github/workflows/docker.yml` 不一致）。
 
@@ -168,9 +168,17 @@
 
 ## R13. Keycloak 初始配置的幂等性（FR-025）
 
-- **Decision**: 使用 `keycloak-config-cli` 一次性任务导入 `deploy/aliyun/keycloak/realm.yaml`（realm、启用 Organizations、组织、平台客户端、redirect URI），开启 `IMPORT_VARSUBSTITUTION_ENABLED=true`，并设置 `import.managed.*=no-delete`，保证重复执行不删除管理员手工创建的用户和配置。
-- **Rationale**: v6.5.0 起支持 Organizations 导入。
-- **待实测**: config-cli 6.5.x 与所选 Keycloak 26.x 补丁版本的兼容性；若不兼容，降级为 Keycloak 自带的 `start --import-realm`（只在 realm 不存在时导入）。
+- **Decision（T031 实测后修正，2026-10-09）**: **不用 keycloak-config-cli**，改用 Keycloak 镜像自带的 `kcadm.sh`，由幂等脚本 `deploy/aliyun/keycloak/provision.sh` 作为一次性任务（`keycloak-config` 服务，镜像与 Keycloak 相同）在每次部署时运行：
+  - realm、客户端 `paperclip`、组织：不存在就创建，存在就更新脚本负责的字段。
+  - 脚本负责的字段写在脚本头部注释里：realm 的 `enabled`、`organizationsEnabled`、`registrationAllowed=false`、`verifyEmail=true`、`loginWithEmailAllowed`、`duplicateEmailsAllowed=false`；客户端的类型、流程、PKCE、secret、回调地址、来源、登出回调；组织的名称、别名、启用状态、域名。
+  - 用户、组织成员、其他客户端和所有其他设置都不碰。
+- **T031 实测结果**:
+  - keycloak-config-cli 最新版 6.5.1 最高只针对 Keycloak 26.5.5 发布构建；它的程序包里**没有组织导入服务**（只有 realm、client、user、group 等，内置的 admin 客户端是 26.0.8）。用它导入含 `organizations` 的文件时，realm 和客户端建出来了，组织被静默忽略。之前"v6.5.0 起支持 Organizations 导入"的说法与实测不符。
+  - config-cli 会对 YAML **注释里**的 `$(env:...)` 也做变量替换，写注释时要注意。
+  - Keycloak 镜像是精简镜像，**没有 awk、grep**，脚本只能用 bash 内置功能解析。
+  - `deploy/aliyun/tests/keycloak-provision-test.sh` 对 Keycloak 26.8.0 连续初始化两次，中间手工新建用户、加入组织、改动受管字段和非受管字段：**17/17 通过**（无重复资源、用户和成员保留、受管字段恢复、非受管设置不变、输出不含 client secret）。
+- **Rationale**: 组织是本方案的核心资源，config-cli 不支持就不能用；kcadm 随 Keycloak 版本发布，不存在兼容问题，也少同步一个镜像到 ACR。
+- **Alternatives considered**: keycloak-config-cli（不支持组织）；`start --import-realm`（只在 realm 不存在时导入，之后的改动无法下发）。
 
 ## R14. 备份与恢复（FR-019、FR-019a、FR-026）
 

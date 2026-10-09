@@ -54,7 +54,7 @@
 | `paperclip` | `paperclip:<tag>`（仓库 Dockerfile，production target） | 无（仅经 Caddy） | `paperclip-data:/paperclip` |
 | `keycloak` | `keycloak:26.x.y` | 无（仅经 Caddy；9000 不暴露） | 无（数据在 PostgreSQL） |
 | `postgres` | `postgres:17-alpine` | 无 | `pgdata` |
-| `keycloak-config` | `keycloak-config-cli:6.5.x-26.x` | 无 | 一次性任务，`restart: "no"` |
+| `keycloak-config` | 与 `keycloak` 相同的镜像，运行 `keycloak/provision.sh` | 无 | 一次性任务，`restart: "no"` |
 
 Caddy 路由：`APP_DOMAIN → paperclip:3100`，`SSO_DOMAIN → keycloak:8080`；`SSO_DOMAIN/admin` 仅允许配置的管理 IP 段访问（FR-027）。
 
@@ -64,7 +64,7 @@ Caddy 路由：`APP_DOMAIN → paperclip:3100`，`SSO_DOMAIN → keycloak:8080`�
 - **步骤**：
   1. 用仓库 `Dockerfile` 构建 `--target production`，设置 `PAPERCLIP_BUILD_COMMIT=${{ github.sha }}`。
   2. 推送到 `${ACR_REGISTRY}/${ACR_NAMESPACE}/paperclip:${{ github.sha }}`。
-  3. 同步基础镜像（keycloak、postgres、caddy、config-cli）到 ACR（已存在相同 tag 则跳过）。
+  3. 同步基础镜像（keycloak、postgres、caddy）到 ACR（已存在相同 tag 则跳过）。
   4. 调用阿里云云助手 `RunCommand`，执行 `/opt/paperclip/deploy/scripts/deploy.sh <env> <sha>`，轮询 `DescribeInvocationResults` 直到结束。
   5. 退出码非 0 时工作流失败（GitHub 自动通知）。
 - **GitHub Secrets**：`ACR_USERNAME`、`ACR_PASSWORD`、`ALIYUN_ACCESS_KEY_ID`、`ALIYUN_ACCESS_KEY_SECRET`（RAM 用户仅授权 `ecs:RunCommand`、`ecs:DescribeInvocationResults`、`ecs:DescribeInvocations`）。
