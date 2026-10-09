@@ -33,10 +33,10 @@
 | `companyId` | 来自组织映射 |
 | `principalType` | `"user"` |
 | `principalId` | 平台用户 `id` |
-| `membershipRole` | 新建时 `"member"`；**已存在时不修改**（FR-006） |
+| `membershipRole` | 新建时 `"operator"`（Paperclip 中"普通成员"的实际角色名，与默认邀请一致）；**已存在时不修改**（FR-006） |
 | `status` | 新建时 `"active"`；已存在时不修改 |
 
-通过 `access.ensureMembership(...)`（`server/src/services/access.ts:871`）写入，幂等。
+先用 `access.getMembership(...)` 查询：已存在则**完全跳过**（`ensureMembership` 遇到角色不同会改写，不能直接调用）；不存在时调用 `access.ensureMembership(companyId, "user", userId, "operator", "active")`，再调用 `access.setPrincipalGrants(companyId, "user", userId, grantsForHumanRole("operator"), null)` 写入默认权限，与接受默认邀请的结果一致。
 
 ### 活动日志 → `activity_log`
 
@@ -81,7 +81,8 @@ validateUserInfo：组织 ∩ 映射键 = ∅ ？
   首次？──是──▶ 创建 user + account（或按已验证邮箱关联已有 user）
       │
       ▼
-  对每个匹配组织：ensureMembership(member) ──新建时──▶ 写活动日志
+  对每个匹配组织：已有成员关系？──是──▶ 跳过
+                      └─否──▶ ensureMembership(operator) + 默认权限 + 写活动日志
       │
       ▼
   创建 session（TTL 24h）──▶ 进入平台

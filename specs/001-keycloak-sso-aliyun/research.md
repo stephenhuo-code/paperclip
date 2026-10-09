@@ -39,6 +39,21 @@
 - **Hook 位置（待实测）**: 优先在 `validateUserInfo` 内（sign-in 时 `user.id` 可用）；create-user 时 `user.id` 尚未生成，则用 `databaseHooks.user.create.after` 补一次（组织列表通过 `mapProfileToUser` 暂存到请求上下文）。实施首个任务用一个最小测试确认两种来源下拿得到的字段。
 - **Alternatives considered**: 映射存数据库并提供管理界面——属于"加戏"，与"尽量少改动"冲突；首期一条映射、写在环境配置里即可。
 
+### R2/R3 实测结果（T007，2026-10-09，读 better-auth 1.7.2 源码）
+
+- **原始声明在哪里**：OAuth 回调里，`validateUserInfo` 收到的 `source.oauth.profile` 是 `providerResult.data`；genericOAuth 有 ID token 时就用**解码后的 ID token 声明**，没有才去请求 userinfo 端点（`plugins/generic-oauth/index.mjs:37-47,215-225`）。因此 Keycloak 的 Organization Membership mapper 必须勾选"Add to ID token"（默认就是勾选的），realm.yaml 里要显式写明。
+- **各来源下 `user.id` 是否可用**：
+  - `sign-in`（已有用户再次登录）：✅ 有 `user.id`（`oauth2/link-account.mjs:137-147`）
+  - `link-account`（按已验证邮箱关联已有本地账号）：✅ 有 `user.id`（`:92-102`）
+  - `create-user`（首次建号）：❌ 只有待写入的 `data`，还没有 id（`db/internal-adapter.mjs:149-167`）
+- **自动入公司的落点（定稿）**：sign-in、link-account 来源在 `validateUserInfo` 内直接执行；create-user 来源先在进程内按小写邮箱暂存组织列表，由 `databaseHooks.user.create.after` 取出并执行，执行后清除暂存（单实例部署，进程内暂存足够）。
+- **准入失败的效果**：`validateUserInfo` 返回 `{ error }` 时，better-auth 抛出 403；浏览器流程重定向到错误地址并带 `error=<code>`（`utils/validate-user-info.mjs`、`api/routes/callback.mjs:154-171`）。回调抛出的异常同样按 403 拒绝（fail closed）。
+- **每次登录同步资料**：genericOAuth 的 `overrideUserInfo: true` 会被映射成 `overrideUserInfoOnSignIn`（`index.mjs:260`），`keycloak()` 助手会透传这个选项（`providers/keycloak.mjs:46`）。
+- **`ensureMembership` 会改写既有角色**：已存在的成员关系角色或状态不同时，它会**直接更新**（`server/src/services/access.ts:871-890`）。因此自动入公司必须先 `getMembership`，已存在就跳过，否则会把管理员降级（违反 FR-006）。
+- **默认角色与权限**：Paperclip 人类成员的角色是 `owner | admin | operator | viewer`，`"member"` 会被归一化为 `operator`；邀请的默认角色是 `operator`（`server/src/services/company-member-roles.ts:11-19,79-88`）。邀请流程在加成员后还会调用 `setPrincipalGrants` 写入 `grantsForHumanRole(role)` 默认权限（`server/src/routes/access.ts:3127-3160`）。SSO 自动入公司**照搬这一行为**：角色 `operator` + `grantsForHumanRole("operator")`，与"接受一个默认邀请"完全一致。
+- **R2 风险核查（OAuth 用户能否自设密码）**：`/set-password` 是 `createAuthEndpoint.serverOnly`，不对外开放（`api/routes/update-user.mjs:196`）；`/request-password-reset` 要求配置 `emailAndPassword.sendResetPassword`，Paperclip 没有配置（`server/src` 中无此配置）。因此**通过 Keycloak 建立的账号无法自行设置密码**，FR-009 无需额外代码。
+- **仍需真实 Keycloak 验证**：`organization` 声明的实际形态（列表还是对象）——代码同时兼容两种，在 T020 / T043 中用真实 Keycloak 确认。
+
 ## R4. 角色、首个管理员和应急登录（FR-006、FR-009、FR-022）
 
 - **Decision**:

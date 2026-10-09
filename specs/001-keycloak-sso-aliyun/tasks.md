@@ -40,9 +40,9 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 
 **Purpose**: 准备开发环境和部署目录骨架
 
-- [ ] T001 在仓库根目录运行 `pnpm install`，确认 `feat/keycloak-sso` 分支（已同步 upstream/master）可以通过 `pnpm -r typecheck`，记录基线结果
-- [ ] T002 [P] 创建部署目录骨架：`deploy/aliyun/{keycloak,scripts,environments}/` 以及空的 `deploy/aliyun/README.md`
-- [ ] T003 [P] 在 `deploy/aliyun/env.example` 中列出 contracts/deployment.md §1 的全部密钥键名（`BETTER_AUTH_SECRET`、`PAPERCLIP_AGENT_JWT_SECRET`、`PAPERCLIP_TOOL_ACTION_SIGNING_SECRET`、`POSTGRES_PASSWORD`、`PAPERCLIP_DB_PASSWORD`、`KEYCLOAK_DB_PASSWORD`、`KC_BOOTSTRAP_ADMIN_PASSWORD`、`PAPERCLIP_AUTH_OIDC_CLIENT_SECRET`、`PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP`），值全部留空，每个键附一行中文说明；文件中不得出现任何 `ANTHROPIC_` 前缀的键
+- [X] T001 在仓库根目录运行 `pnpm install`，确认 `feat/keycloak-sso` 分支（已同步 upstream/master）可以通过 `pnpm -r typecheck`，记录基线结果
+- [X] T002 [P] 创建部署目录骨架：`deploy/aliyun/{keycloak,scripts,environments}/` 以及空的 `deploy/aliyun/README.md`
+- [X] T003 [P] 在 `deploy/aliyun/env.example` 中列出 contracts/deployment.md §1 的全部密钥键名（`BETTER_AUTH_SECRET`、`PAPERCLIP_AGENT_JWT_SECRET`、`PAPERCLIP_TOOL_ACTION_SIGNING_SECRET`、`POSTGRES_PASSWORD`、`PAPERCLIP_DB_PASSWORD`、`KEYCLOAK_DB_PASSWORD`、`KC_BOOTSTRAP_ADMIN_PASSWORD`、`PAPERCLIP_AUTH_OIDC_CLIENT_SECRET`、`PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP`），值全部留空，每个键附一行中文说明；文件中不得出现任何 `ANTHROPIC_` 前缀的键
 
 ---
 
@@ -52,9 +52,9 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 
 **⚠️ CRITICAL**: 本阶段完成前不开始 US1、US3
 
-- [ ] T004 在 `server/src/__tests__/auth-oidc.test.ts` 中先写配置解析测试（此时应失败）：(a) `PAPERCLIP_AUTH_OIDC_ISSUER`、`PAPERCLIP_AUTH_OIDC_CLIENT_ID`、`PAPERCLIP_AUTH_OIDC_CLIENT_SECRET` 三项全部缺失时 OIDC 关闭；(b) 只配置了其中一部分时抛出明确错误（启动失败，不静默降级）；(c) `PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP` "必须是合法 JSON 对象；值必须是 UUID 格式"，否则抛错；(d) 映射为空对象或缺失时 OIDC 仍可启用但准入白名单为空（fail closed）；(e) `PAPERCLIP_AUTH_OIDC_LABEL` 缺省为 `Sign in with SSO`；(f) `PAPERCLIP_AUTH_SESSION_TTL_SECONDS` 未设置时为 `undefined`，设置时解析为正整数
-- [ ] T005 在 `server/src/config.ts` 的 `Config` 类型（约 `:62-72`）中新增 `authOidc: { issuer, clientId, clientSecret, orgCompanyMap: Record<string,string>, label } | null` 和 `authSessionTtlSeconds?: number`；在 `PAPERCLIP_AUTH_DISABLE_SIGN_UP` 读取处（约 `:223`）附近读取上述环境变量，实现 T004 的校验规则，在返回对象（约 `:296-328`）中输出；解析逻辑放在新文件 `server/src/auth/oidc.ts` 的 `parseOidcConfig(env)` 中供 config.ts 调用，使 T004 通过。错误信息中不得包含 client secret
-- [ ] T006 在 `server/src/__tests__/auth-oidc.test.ts` 中补一条用例：未配置任何 OIDC 变量时 `parseOidcConfig` 返回 `{ authOidc: null, authSessionTtlSeconds: undefined }`，且 T005 修改后的 `loadConfig()` 其余字段与改动前一致（回归保护）；另断言 (b) 的错误信息中不包含 client secret 的值
+- [X] T004 在 `server/src/__tests__/auth-oidc.test.ts` 中先写配置解析测试（此时应失败）：(a) `PAPERCLIP_AUTH_OIDC_ISSUER`、`PAPERCLIP_AUTH_OIDC_CLIENT_ID`、`PAPERCLIP_AUTH_OIDC_CLIENT_SECRET` 三项全部缺失时 OIDC 关闭；(b) 只配置了其中一部分时抛出明确错误（启动失败，不静默降级）；(c) `PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP` "必须是合法 JSON 对象；值必须是 UUID 格式"，否则抛错；(d) 映射为空对象或缺失时 OIDC 仍可启用但准入白名单为空（fail closed）；(e) `PAPERCLIP_AUTH_OIDC_LABEL` 缺省为 `Sign in with SSO`；(f) `PAPERCLIP_AUTH_SESSION_TTL_SECONDS` 未设置时为 `undefined`，设置时解析为正整数
+- [X] T005 在 `server/src/config.ts` 的 `Config` 类型（约 `:62-72`）中新增 `authOidc: { issuer, clientId, clientSecret, orgCompanyMap: Record<string,string>, label } | null` 和 `authSessionTtlSeconds?: number`；在 `PAPERCLIP_AUTH_DISABLE_SIGN_UP` 读取处（约 `:223`）附近读取上述环境变量，实现 T004 的校验规则，在返回对象（约 `:296-328`）中输出；解析逻辑放在新文件 `server/src/auth/oidc.ts` 的 `parseOidcConfig(env)` 中供 config.ts 调用，使 T004 通过。错误信息中不得包含 client secret
+- [X] T006 在 `server/src/__tests__/auth-oidc.test.ts` 中补一条用例：未配置任何 OIDC 变量时 `parseOidcConfig` 返回 `{ authOidc: null, authSessionTtlSeconds: undefined }`，且 T005 修改后的 `loadConfig()` 其余字段与改动前一致（回归保护）；另断言 (b) 的错误信息中不包含 client secret 的值
 
 **Checkpoint**: `pnpm test -- server/src/__tests__/auth-oidc.test.ts` 通过；OIDC 配置可读取
 
@@ -68,7 +68,7 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 
 ### Spike for User Story 1
 
-- [ ] T007 [US1] 验证 better-auth 1.7.2 钩子可用字段（research R2、R3 的"待实测"）：在本地起一个 Keycloak 26.x 容器（realm 启用 Organizations，客户端带 `organization` scope），临时在 `server/src/auth/better-auth.ts` 中挂上 `keycloak()` 插件并打印 `user.validateUserInfo` 在 `create-user`、`sign-in`、`link-account` 三种来源下的 `user.id` 是否存在、`source.oauth.profile.organization` 的实际形态；同时检查 better-auth 1.7.2 是否对外开放可让已登录的 OAuth 用户自行设置或重置密码的 HTTP 接口（如 set-password、request-password-reset）；若开放，在 T015 中通过 `disabledPaths` 或等效配置关闭（FR-009）；结论（含截取的声明样例，去掉个人信息）追加到 `specs/001-keycloak-sso-aliyun/research.md` R2/R3 的"实测结果"小节；验证完删除临时打印代码
+- [X] T007 [US1] 验证 better-auth 1.7.2 钩子可用字段（research R2、R3 的"待实测"）：在本地起一个 Keycloak 26.x 容器（realm 启用 Organizations，客户端带 `organization` scope），临时在 `server/src/auth/better-auth.ts` 中挂上 `keycloak()` 插件并打印 `user.validateUserInfo` 在 `create-user`、`sign-in`、`link-account` 三种来源下的 `user.id` 是否存在、`source.oauth.profile.organization` 的实际形态；同时检查 better-auth 1.7.2 是否对外开放可让已登录的 OAuth 用户自行设置或重置密码的 HTTP 接口（如 set-password、request-password-reset）；若开放，在 T015 中通过 `disabledPaths` 或等效配置关闭（FR-009）；结论（含截取的声明样例，去掉个人信息）追加到 `specs/001-keycloak-sso-aliyun/research.md` R2/R3 的"实测结果"小节；验证完删除临时打印代码
 
 ### Tests for User Story 1 ⚠️
 
@@ -76,7 +76,7 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 
 - [ ] T008 [P] [US1] 在 `server/src/__tests__/auth-oidc.test.ts` 中为 `extractOrganizations(profile)` 写测试：兼容列表形态 `["acme"]`、对象形态 `{"acme": {"id": "..."}}`（取键）、缺失或非法时返回空数组
 - [ ] T009 [P] [US1] 在 `server/src/__tests__/auth-oidc.test.ts` 中为准入校验 `validateOidcUserInfo` 写测试：组织 ∩ 映射键为空 → 返回 `{ error: "org_not_allowed" }`；缺少 email → 返回 `{ error: "email_required" }`；有交集 → 放行；非 OAuth 来源（邮箱密码）→ 一律放行（不影响应急管理员）
-- [ ] T010 [P] [US1] 在 `server/src/__tests__/auth-oidc.test.ts` 中为 `reconcileOidcMemberships` 写测试（mock `access.ensureMembership` 与 `logActivity`）：对每个匹配组织调用 `ensureMembership(companyId, "user", userId, "member", "active")`；"新建时 `membershipRole` 为 `"member"`；已存在时不修改"；仅在新建成员关系时写一条 `action = "company_membership.sso_joined"`、`actorType = "user"`、`details = { providerId: "keycloak", organization: "<alias>" }` 的活动日志
+- [ ] T010 [P] [US1] 在 `server/src/__tests__/auth-oidc.test.ts` 中为 `reconcileOidcMemberships` 写测试（mock `getMembership`、`ensureMembership`、`setPrincipalGrants` 与 `logActivity`）：对每个匹配且尚无成员关系的组织调用 `ensureMembership(companyId, "user", userId, "operator", "active")` 和 `setPrincipalGrants(companyId, "user", userId, grantsForHumanRole("operator"), null)`；"已存在时不修改"——已有成员关系时上述两个调用都不发生；仅在新建成员关系时写一条 `action = "company_membership.sso_joined"`、`actorType = "user"`、`details = { providerId: "keycloak", organization: "<alias>" }` 的活动日志
 - [ ] T011 [P] [US1] 在**新文件** `server/src/__tests__/health-oidc.test.ts` 中写测试（不修改上游的 `health.test.ts`）：启用 OIDC 时 `GET /api/health` 返回 `auth.oidc = { enabled: true, providerId: "keycloak", label }`，且响应中不包含 issuer、clientId、映射表；未启用时为 `{ enabled: false }`
 - [ ] T012 [P] [US1] 在**新文件** `server/src/__tests__/better-auth-oidc.test.ts` 中写测试（不修改上游的 `better-auth.test.ts`）：`config.authOidc` 存在时 better-auth 配置的 `plugins` 包含 providerId 为 `keycloak` 的 genericOAuth 插件，且该 provider 设置了 `overrideUserInfo: true`（每次登录同步姓名、邮箱，FR-005）、`user.validateUserInfo` 已挂载；`config.authOidc` 为 null 时 `plugins` 与改动前完全一致（托管工作区 handoff 插件的条件注入保持不变）；`loopbackAuth` 与默认实例使用同一份插件配置
 - [ ] T013 [P] [US1] 在**新文件** `ui/src/pages/Auth.oidc.test.tsx` 中写测试（不修改上游的 `Auth.test.tsx`）：`auth.oidc.enabled` 为 true 时渲染企业登录主按钮并在点击时调用 `authApi.signInSocial`；URL 带 `error=org_not_allowed` 时显示"您的账号未被授权访问此平台，请联系管理员"；带其他 `error` 时显示"企业登录失败，请重试"；`signInSocial` 请求失败时显示"企业登录服务暂时不可用"；`enabled` 为 false 时页面与现状一致
