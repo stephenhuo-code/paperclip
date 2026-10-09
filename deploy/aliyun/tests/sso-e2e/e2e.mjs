@@ -1,6 +1,7 @@
 // End-to-end SSO check against the local Keycloak (18080) and Paperclip (3199).
 // Usage: node e2e.mjs setup   -> break-glass admin, claim, company, fail-closed check
 //        node e2e.mjs verify <companyId>
+//        node e2e.mjs signup-disabled   (server started with PAPERCLIP_AUTH_DISABLE_SIGN_UP=true)
 import { execFileSync } from "node:child_process";
 
 const APP = "http://localhost:3199";
@@ -139,6 +140,17 @@ async function setup() {
   );
   check("rejected login creates no user", sql("select count(*) from \"user\" where email='a@example.cn'") === "0");
 
+  // Local-only account whose email Keycloak has not verified (used by verify for FR-010).
+  if (sql("select count(*) from \"user\" where email='local@example.cn'") === "0") {
+    const local = new Browser();
+    const created = await local.json("/api/auth/sign-up/email", "POST", {
+      name: "Local Only",
+      email: "local@example.cn",
+      password: "LocalOnly#2026",
+    });
+    check("a local-only account exists for the unverified-email linking check", created.status === 200, `status ${created.status}`);
+  }
+
   console.log(`COMPANY_ID=${companyId}`);
 }
 
@@ -206,16 +218,53 @@ async function verify(companyId) {
   check("A is rejected after removal from the organization (FR-008)", loginA3.target.includes("error=org_not_allowed"), loginA3.target);
   kc("create", `organizations/${orgId}/members`, "-r", "dw", "-b", `"${kcUserA}"`);
 
+  // SC-004: sessions last 24 hours.
+  const ttl = Number(sql(`select extract(epoch from expires_at - created_at)::int from session where user_id='${userB}' order by created_at desc limit 1`));
+  check("session lifetime is 24 hours (SC-004)", Math.abs(ttl - 86400) <= 60, `${ttl} s`);
+
+  // FR-010: a verified Keycloak email links to the existing local account.
+  const adminId = sql("select id from \"user\" where email='admin@example.cn'");
+  const ops = new Browser();
+  const opsLogin = await ssoLogin(ops, "ops-admin");
+  const opsUser = (await ops.json("/api/auth/get-session")).data?.user?.id;
+  check("verified Keycloak email links to the break-glass admin's account (FR-010)", opsLogin.target === `${APP}/` && opsUser === adminId, `${opsLogin.target} user=${opsUser}`);
+  check("break-glass admin still has exactly one user row", sql("select count(*) from \"user\" where email='admin@example.cn'") === "1");
+
+  // FR-010: an unverified Keycloak email does not take over a local account.
+  const localId = sql("select id from \"user\" where email='local@example.cn'");
+  const lou = new Browser();
+  const louLogin = await ssoLogin(lou, "local-user");
+  check("unverified Keycloak email is not linked to the local account", louLogin.target.includes("error=") && !louLogin.target.endsWith(`${APP}/`), louLogin.target);
+  check("local account has no Keycloak link", sql(`select count(*) from account where user_id='${localId}' and provider_id='keycloak'`) === "0");
+
   // FR-009: break-glass admin still signs in with a password.
   const admin = new Browser();
   const adminLogin = await admin.json("/api/auth/sign-in/email", "POST", { email: "admin@example.cn", password: "BreakGlass#2026" });
   check("break-glass admin still signs in with a password", adminLogin.status === 200, `status ${adminLogin.status}`);
 }
 
+/** Run with PAPERCLIP_AUTH_DISABLE_SIGN_UP=true on the server. */
+async function signupDisabled() {
+  const stranger = new Browser();
+  const signUp = await stranger.json("/api/auth/sign-up/email", "POST", {
+    name: "Stranger",
+    email: "stranger@example.cn",
+    password: "Stranger#2026",
+  });
+  check("email sign-up is refused once sign-up is disabled", signUp.status >= 400, `status ${signUp.status}`);
+  const d = new Browser();
+  const loginD = await ssoLogin(d, "user-d");
+  check("a new organization member can still join through SSO", loginD.target === `${APP}/`, loginD.target);
+  const admin = new Browser();
+  const adminLogin = await admin.json("/api/auth/sign-in/email", "POST", { email: "admin@example.cn", password: "BreakGlass#2026" });
+  check("break-glass admin password sign-in still works", adminLogin.status === 200, `status ${adminLogin.status}`);
+}
+
 const [mode, arg] = process.argv.slice(2);
 try {
   if (mode === "setup") await setup();
   else if (mode === "verify") await verify(arg);
+  else if (mode === "signup-disabled") await signupDisabled();
   else throw new Error("usage: node e2e.mjs setup | verify <companyId>");
 } catch (error) {
   check("e2e script ran without errors", false, error instanceof Error ? error.message : String(error));

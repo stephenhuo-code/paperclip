@@ -39,9 +39,9 @@ fi
 ORG_ID=$($KC get organizations -r dw --fields id,alias --format csv --noquotes | awk -F, '$2=="acme"{print $1}')
 
 create_user() {
-  local username="$1" email="$2" first="$3"
+  local username="$1" email="$2" first="$3" verified="${4:-true}"
   if [ -z "$($KC get users -r dw -q username="$username" --fields id --format csv --noquotes)" ]; then
-    $KC create users -r dw -s username="$username" -s email="$email" -s emailVerified=true \
+    $KC create users -r dw -s username="$username" -s email="$email" -s emailVerified="$verified" \
       -s firstName="$first" -s lastName=Tester -s enabled=true >/dev/null
     $KC set-password -r dw --username "$username" --new-password "Passw0rd!" >/dev/null
   fi
@@ -51,8 +51,12 @@ create_user() {
 USER_A=$(create_user user-a a@example.cn Alice)
 USER_B=$(create_user user-b b@example.cn Bob)
 create_user user-c c@outside.cn Carol >/dev/null
+# Same email as the break-glass admin (verified) and as a local-only account (unverified).
+USER_ADMIN=$(create_user ops-admin admin@example.cn Ops true)
+USER_LOCAL=$(create_user local-user local@example.cn Lou false)
+USER_D=$(create_user user-d d@example.cn Dana true)
 
-for member in "$USER_A" "$USER_B"; do
+for member in "$USER_A" "$USER_B" "$USER_ADMIN" "$USER_LOCAL" "$USER_D"; do
   $KC create "organizations/$ORG_ID/members" -r dw -b "\"$member\"" >/dev/null 2>&1 || true
 done
 

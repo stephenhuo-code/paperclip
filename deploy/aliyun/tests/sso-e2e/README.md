@@ -2,24 +2,18 @@
 
 用真实的 Keycloak 26 和一个独立的 Paperclip 实例，自动走完浏览器式 OIDC 登录（cookie、跳转、Keycloak 两步登录表单、回调），并用 API 和数据库核对结果。对应 quickstart.md 场景 2~4、tasks.md T020。
 
+一键运行（自动创建并清理容器、独立的 Paperclip 实例目录；任何一项失败则退出码非 0；加 `KEEP=1` 保留容器）：
+
 ```sh
-# 1. 起依赖（端口：Keycloak 18080、PostgreSQL 55432）
-docker run -d --name pc-sso-e2e-postgres -e POSTGRES_PASSWORD=e2e -e POSTGRES_DB=paperclip -p 127.0.0.1:55432:5432 postgres:17-alpine
-docker run -d --name pc-sso-e2e-keycloak -p 127.0.0.1:18080:8080 \
-  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
-  quay.io/keycloak/keycloak:26.8.0 start-dev
-./keycloak-setup.sh                        # realm dw、组织 acme、客户端 paperclip、用户 A/B（组织内）/C（组织外）
-
-# 2. 未配置组织映射：应急管理员、认领实例、创建公司、验证 fail closed
-./start-paperclip.sh &                     # Paperclip 监听 3199
-node e2e.mjs setup                         # 输出 COMPANY_ID=...
-
-# 3. 填写映射后重启，跑完整验证
-kill %1; ./start-paperclip.sh '{"acme":"<COMPANY_ID>"}' &
-node e2e.mjs verify <COMPANY_ID>
-
-# 清理
-kill %1; docker rm -f pc-sso-e2e-postgres pc-sso-e2e-keycloak
+deploy/aliyun/tests/sso-e2e/run-all.sh
 ```
+
+三个阶段：
+
+1. **未配置组织映射**（`e2e.mjs setup`）：应急管理员注册并认领实例、创建公司；验证所有企业登录被拒绝（fail closed）。
+2. **配置组织映射后**（`e2e.mjs verify`）：单点登录、自动入公司与默认权限、活动日志、组织外用户被拒、角色不被覆盖、资料同步、退出登录、移出组织后被拒、24 小时会话、已验证邮箱关联已有账号、未验证邮箱拒绝关联、应急管理员密码登录。
+3. **关闭邮箱注册后**（`e2e.mjs signup-disabled`）：邮箱注册被拒绝，新组织成员仍可通过 SSO 建号，应急管理员仍可密码登录。
+
+端口：Keycloak 18080、PostgreSQL 55432、Paperclip 3199。
 
 `start-paperclip.sh` 关闭了 better-auth 的登录频率限制（脚本会在短时间内多次登录）；生产环境保持开启。

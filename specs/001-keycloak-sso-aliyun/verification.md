@@ -25,3 +25,21 @@
 | 应急管理员仍可用密码登录 | FR-009 | ✅ |
 
 实测发现：脚本在短时间内多次登录会触发 better-auth 的登录频率限制（429），测试环境用 `PAPERCLIP_AUTH_RATE_LIMIT_ENABLED=false` 关闭，生产环境保持开启。
+
+## T030 US3 验收（2026-10-09，同一套脚本扩展后从零完整运行）
+
+- 命令：`deploy/aliyun/tests/sso-e2e/run-all.sh`（自动创建并清理容器）。
+- 结果：phase 1 **6/6**、phase 2 **22/22**、phase 3 **3/3**，共 **31/31** 通过。
+
+新增检查：
+
+| 检查 | 需求 | 结果 |
+|---|---|---|
+| 会话有效期 86400 秒 | SC-004 | ✅ |
+| Keycloak 中与应急管理员同邮箱且已验证的账号，登录后就是应急管理员本人（同一个 user id，未新建账号） | FR-010 | ✅ |
+| Keycloak 邮箱未验证时不关联已有本地账号（`error=account_not_linked`），本地账号上没有 Keycloak 关联 | FR-010 | ✅ |
+| 打开 `PAPERCLIP_AUTH_DISABLE_SIGN_UP=true` 后邮箱注册返回 400 | FR-009 | ✅ |
+| 关闭注册后，新的组织成员仍可通过 SSO 建号进入 | FR-003 | ✅ |
+| 关闭注册后，应急管理员仍可密码登录 | FR-009 | ✅ |
+
+US3 的单元测试（会话有效期、账号关联配置、应急登录折叠）见 `server/src/__tests__/better-auth-oidc.test.ts`、`ui/src/pages/Auth.oidc.test.tsx`。
