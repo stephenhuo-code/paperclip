@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildOidcAuthOptions, type OidcConfig } from "../auth/oidc.js";
+import { applyOidcAuthOptions, buildOidcAuthOptions, type OidcConfig } from "../auth/oidc.js";
 
 const COMPANY_ID = "5facf42d-f31f-4698-9bc9-e38f876b1579";
 
@@ -130,5 +130,57 @@ describe("buildOidcAuthOptions", () => {
     await options.databaseHooks!.user!.create!.after!({ id: "admin", email: "admin@example.cn" } as never, null);
 
     expect(d.ensureMembership).not.toHaveBeenCalled();
+  });
+});
+
+describe("applyOidcAuthOptions", () => {
+  function accessDeps() {
+    return {
+      access: {
+        getMembership: vi.fn(async () => null),
+        ensureMembership: vi.fn(async () => ({})),
+        setPrincipalGrants: vi.fn(async () => undefined),
+      },
+      logActivity: vi.fn(async () => ({})),
+    };
+  }
+
+  it("leaves the upstream auth config untouched when OIDC is not configured", () => {
+    const existingPlugin = { id: "workspace-login-handoff" };
+    const authConfig: Record<string, unknown> = { secret: "s", plugins: [existingPlugin] };
+    applyOidcAuthOptions(authConfig, { authOidc: null, authSessionTtlSeconds: undefined }, accessDeps());
+    expect(authConfig).toEqual({ secret: "s", plugins: [existingPlugin] });
+
+    const withoutPlugins: Record<string, unknown> = { secret: "s" };
+    applyOidcAuthOptions(withoutPlugins, { authOidc: null, authSessionTtlSeconds: undefined }, accessDeps());
+    expect(withoutPlugins).toEqual({ secret: "s" });
+  });
+
+  it("appends the Keycloak plugin after existing plugins and installs the hooks", () => {
+    const existingPlugin = { id: "workspace-login-handoff" };
+    const authConfig: Record<string, unknown> = { secret: "s", plugins: [existingPlugin] };
+    applyOidcAuthOptions(authConfig, { authOidc: OIDC, authSessionTtlSeconds: undefined }, accessDeps());
+
+    const plugins = authConfig.plugins as Array<{ id: string }>;
+    expect(plugins.map((plugin) => plugin.id)).toEqual(["workspace-login-handoff", "generic-oauth"]);
+    expect(typeof (authConfig.user as { validateUserInfo?: unknown }).validateUserInfo).toBe("function");
+    expect(
+      typeof (authConfig.databaseHooks as { user?: { create?: { after?: unknown } } }).user?.create?.after,
+    ).toBe("function");
+  });
+
+  it("joins companies through the access service and activity log", async () => {
+    const d = accessDeps();
+    const authConfig: Record<string, unknown> = {};
+    applyOidcAuthOptions(authConfig, { authOidc: OIDC, authSessionTtlSeconds: undefined }, d);
+
+    const validate = (authConfig.user as { validateUserInfo: (data: unknown, ctx: unknown) => Promise<unknown> })
+      .validateUserInfo;
+    await validate({ user: { id: "user-a", email: "a@example.cn" }, source: oauthSource("sign-in") }, {});
+
+    expect(d.access.getMembership).toHaveBeenCalledWith(COMPANY_ID, "user", "user-a");
+    expect(d.access.ensureMembership).toHaveBeenCalledWith(COMPANY_ID, "user", "user-a", "operator", "active");
+    expect(d.access.setPrincipalGrants).toHaveBeenCalledTimes(1);
+    expect(d.logActivity).toHaveBeenCalledWith(expect.objectContaining({ action: "company_membership.sso_joined" }));
   });
 });

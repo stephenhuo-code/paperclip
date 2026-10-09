@@ -12,6 +12,9 @@ import {
 } from "@paperclipai/db";
 import type { Config } from "../config.js";
 import { resolvePaperclipInstanceId } from "../home-paths.js";
+import { accessService } from "../services/access.js";
+import { logActivity } from "../services/activity-log.js";
+import { applyOidcAuthOptions } from "./oidc.js";
 import {
   workspaceLoginHandoffPlugin,
   type WorkspaceHandoffExpectedIdentity,
@@ -308,6 +311,10 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
   if (!baseUrl) {
     delete (authConfig as { baseURL?: string }).baseURL;
   }
+  applyOidcAuthOptions(authConfig, config, {
+    access: accessService(db),
+    logActivity: (input) => logActivity(db, input),
+  });
 
   const defaultAuth = betterAuth(authConfig);
   const supportsManagedLoopbackAuth = Boolean(

@@ -5,6 +5,8 @@
  * small, well-defined hook-in point. See specs/001-keycloak-sso-aliyun.
  */
 
+import type { BetterAuthOptions, BetterAuthPlugin } from "better-auth";
+import { genericOAuth, keycloak } from "better-auth/plugins/generic-oauth";
 import { grantsForHumanRole } from "../services/company-member-roles.js";
 
 export interface OidcConfig {
@@ -208,4 +210,115 @@ export async function reconcileOidcMemberships(
     joinedCompanyIds.push(companyId);
   }
   return { joinedCompanyIds };
+}
+
+export interface OidcAuthOptions {
+  plugins: BetterAuthPlugin[];
+  options: Pick<BetterAuthOptions, "user" | "databaseHooks">;
+}
+
+function profileString(profile: Record<string, unknown>, key: string): string | undefined {
+  const value = profile[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+/**
+ * Better Auth plugins and options for Keycloak sign-in. Returns empty
+ * fragments when OIDC is not configured so the upstream auth setup is
+ * unchanged.
+ *
+ * Membership joins run in `validateUserInfo` for returning users (sign-in,
+ * link-account). A brand-new user has no id yet at that point, so its
+ * organizations are held by email until `user.create.after` fires.
+ */
+export function buildOidcAuthOptions(
+  config: { authOidc?: OidcConfig | null },
+  deps: OidcMembershipDeps,
+): OidcAuthOptions {
+  const oidc = config.authOidc;
+  if (!oidc) return { plugins: [], options: {} };
+
+  const pendingOrganizationsByEmail = new Map<string, string[]>();
+
+  const join = (userId: string, organizations: string[]) =>
+    reconcileOidcMemberships(deps, { userId, organizations, orgCompanyMap: oidc.orgCompanyMap });
+
+  const provider = {
+    ...keycloak({
+      issuer: oidc.issuer,
+      clientId: oidc.clientId,
+      clientSecret: oidc.clientSecret,
+      scopes: ["openid", "profile", "email", "organization"],
+      overrideUserInfo: true,
+    }),
+    mapProfileToUser: async (profile: Record<string, unknown>) => ({
+      name: profileString(profile, "name") ?? profileString(profile, "preferred_username"),
+      email: profileString(profile, "email"),
+      emailVerified: profile.email_verified === true,
+    }),
+  };
+
+  return {
+    plugins: [genericOAuth({ config: [provider] })],
+    options: {
+      user: {
+        validateUserInfo: async ({ user, source }) => {
+          const input = { user, source } as OidcUserInfoValidationInput;
+          const rejection = validateOidcUserInfo(oidc, input);
+          if (rejection) return rejection;
+          if (source.method !== "oauth" || source.oauth?.providerId !== OIDC_PROVIDER_ID) return;
+
+          const organizations = extractOrganizations(source.oauth.profile);
+          const userId = typeof user.id === "string" ? user.id : undefined;
+          if (userId) {
+            await join(userId, organizations);
+          } else if (typeof user.email === "string") {
+            pendingOrganizationsByEmail.set(user.email.toLowerCase(), organizations);
+          }
+        },
+      },
+      databaseHooks: {
+        user: {
+          create: {
+            after: async (user) => {
+              const email = user.email?.toLowerCase();
+              const organizations = email ? pendingOrganizationsByEmail.get(email) : undefined;
+              if (!email || !organizations) return;
+              pendingOrganizationsByEmail.delete(email);
+              await join(user.id, organizations);
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+interface OidcAccessDeps {
+  access: Pick<OidcMembershipDeps, "getMembership" | "ensureMembership" | "setPrincipalGrants">;
+  logActivity: OidcMembershipDeps["logActivity"];
+}
+
+/**
+ * Hook-in point for `createBetterAuthInstance`: adds the Keycloak plugin after
+ * any existing plugins and installs the admission and membership hooks. A
+ * no-op when OIDC is not configured.
+ */
+export function applyOidcAuthOptions(
+  authConfig: Record<string, unknown>,
+  config: { authOidc?: OidcConfig | null },
+  deps: OidcAccessDeps,
+): void {
+  const { plugins, options } = buildOidcAuthOptions(config, {
+    getMembership: (...args) => deps.access.getMembership(...args),
+    ensureMembership: (...args) => deps.access.ensureMembership(...args),
+    setPrincipalGrants: (...args) => deps.access.setPrincipalGrants(...args),
+    logActivity: (input) => deps.logActivity(input),
+  });
+  if (plugins.length === 0) return;
+
+  const existing = Array.isArray(authConfig.plugins) ? (authConfig.plugins as BetterAuthPlugin[]) : [];
+  authConfig.plugins = [...existing, ...plugins];
+  authConfig.user = { ...(authConfig.user as object | undefined), ...options.user };
+  authConfig.databaseHooks = { ...(authConfig.databaseHooks as object | undefined), ...options.databaseHooks };
 }
