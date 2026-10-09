@@ -124,12 +124,12 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 ### Tests for User Story 3 ⚠️
 
 - [ ] T025 [P] [US3] 在 `server/src/__tests__/auth-oidc.test.ts` 中补测试：已是 `admin` 的成员再次 SSO 登录后角色仍为 `admin`（`ensureMembership` 不改既有角色，FR-006）；组织被移出后的 sign-in 来源校验返回 `org_not_allowed`（FR-008）
-- [ ] T026 [P] [US3] 在 `server/src/__tests__/better-auth-oidc.test.ts` 中补测试：设置 `authSessionTtlSeconds = 86400` 时 better-auth 配置的 `session.expiresIn` 为 86400，未设置时不出现该字段（保持上游默认）；启用 OIDC 时 `account.accountLinking.trustedProviders` 为 `["keycloak"]`
+- [ ] T026 [P] [US3] 在 `server/src/__tests__/better-auth-oidc.test.ts` 中补测试：设置 `authSessionTtlSeconds = 86400` 时 better-auth 配置的 `session.expiresIn` 为 86400，未设置时不出现该字段（保持上游默认）；启用 OIDC 时 `account.accountLinking` 为 `{ enabled: true, requireLocalEmailVerified: false }`，且**不**设置 `trustedProviders`（keycloak 不是可信 provider，关联前必须有 Keycloak 的 `email_verified=true`）；未启用 OIDC 但设置了 TTL 时同样生效
 - [ ] T027 [P] [US3] 在 `ui/src/pages/Auth.oidc.test.tsx` 中补测试：`auth.oidc.enabled` 为 true 时邮箱密码表单默认折叠在"管理员应急登录"展开区内、注册入口隐藏；展开后仍可用邮箱密码登录
 
 ### Implementation for User Story 3
 
-- [ ] T028 [US3] 修改 `server/src/auth/better-auth.ts`：`config.authSessionTtlSeconds` 存在时设置 `session.expiresIn`；`config.authOidc` 存在时设置 `account.accountLinking = { enabled: true, trustedProviders: ["keycloak"] }`，仅在 Keycloak `email_verified=true` 时关联已有本地账号（FR-010）；使 T025、T026 通过
+- [ ] T028 [US3] 修改 `server/src/auth/better-auth.ts`：`config.authSessionTtlSeconds` 存在时设置 `session.expiresIn`；`config.authOidc` 存在时设置 `account.accountLinking = { enabled: true, requireLocalEmailVerified: false }`（Paperclip 邮箱密码注册不验证邮箱，默认的 `requireLocalEmailVerified: true` 会让应急管理员永远无法关联），不设 `trustedProviders`，从而仅在 Keycloak `email_verified=true` 时关联已有本地账号（FR-010；依据 `better-auth/dist/oauth2/link-account.mjs:78-81`）；使 T025、T026 通过
 - [ ] T029 [US3] 修改 `ui/src/pages/Auth.tsx`：启用 OIDC 时把现有邮箱密码表单（约 `:123-205`）收进"管理员应急登录"可展开区，隐藏注册入口；未启用时不变；遵守 token 规则；使 T027 通过
 - [ ] T030 [US3] 按 quickstart.md 场景 2、场景 4 在本地验证：bootstrap 邀请创建应急管理员 → 打开 `PAPERCLIP_AUTH_DISABLE_SIGN_UP=true` 后注册入口消失、应急管理员仍能密码登录；B 被设为管理员后重新 SSO 登录仍为管理员；A 被移出 Keycloak 组织后重新登录被拒绝；结果记录到 PR 描述草稿
 

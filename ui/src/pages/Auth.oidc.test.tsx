@@ -169,6 +169,52 @@ describe("AuthPage enterprise sign-in", () => {
     await act(() => root.unmount());
   });
 
+  function breakGlassToggle() {
+    return Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.trim() === "管理员应急登录",
+    );
+  }
+
+  it("folds the password form behind the break-glass admin entry and hides sign-up", async () => {
+    const root = await mount();
+
+    expect(breakGlassToggle()).toBeDefined();
+    expect(breakGlassToggle()!.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector("input[name='email']")).toBeNull();
+    expect(container.querySelector("input[name='password']")).toBeNull();
+    expect(container.textContent).not.toContain("Need an account?");
+    expect(container.textContent).not.toContain("Create one");
+    await act(() => root.unmount());
+  });
+
+  it("lets the break-glass admin sign in with a password after expanding", async () => {
+    signInEmailMock.mockResolvedValue(undefined);
+    const root = await mount();
+
+    await act(async () => {
+      breakGlassToggle()!.click();
+    });
+    expect(breakGlassToggle()!.getAttribute("aria-expanded")).toBe("true");
+
+    const email = container.querySelector<HTMLInputElement>("input[name='email']")!;
+    const password = container.querySelector<HTMLInputElement>("input[name='password']")!;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    await act(async () => {
+      setValue.call(email, "admin@example.cn");
+      email.dispatchEvent(new Event("input", { bubbles: true }));
+      setValue.call(password, "BreakGlass#2026");
+      password.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await flushReact();
+
+    expect(signInEmailMock).toHaveBeenCalledWith({ email: "admin@example.cn", password: "BreakGlass#2026" });
+    expect(container.textContent).not.toContain("Need an account?");
+    await act(() => root.unmount());
+  });
+
   it("keeps the upstream page unchanged when enterprise sign-in is off", async () => {
     healthMock.mockResolvedValue({ status: "ok", deploymentMode: "authenticated" });
     const root = await mount();

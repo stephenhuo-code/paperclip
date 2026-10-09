@@ -184,3 +184,38 @@ describe("applyOidcAuthOptions", () => {
     expect(d.logActivity).toHaveBeenCalledWith(expect.objectContaining({ action: "company_membership.sso_joined" }));
   });
 });
+
+describe("session lifetime and account linking", () => {
+  it("sets the session lifetime from PAPERCLIP_AUTH_SESSION_TTL_SECONDS even without OIDC", () => {
+    const { plugins, options } = buildOidcAuthOptions({ authOidc: null, authSessionTtlSeconds: 86400 }, deps());
+    expect(plugins).toEqual([]);
+    expect(options).toEqual({ session: { expiresIn: 86400 } });
+  });
+
+  it("keeps better-auth's default session lifetime when no TTL is configured", () => {
+    const { options } = buildOidcAuthOptions({ authOidc: OIDC, authSessionTtlSeconds: undefined }, deps());
+    expect(options).not.toHaveProperty("session");
+  });
+
+  it("links a Keycloak account to an existing local account only through a verified Keycloak email", () => {
+    const { options } = buildOidcAuthOptions({ authOidc: OIDC, authSessionTtlSeconds: undefined }, deps());
+    expect(options.account).toEqual({
+      accountLinking: { enabled: true, requireLocalEmailVerified: false },
+    });
+    // Keycloak must not be a trusted provider: trusted providers skip the email_verified check.
+    expect(options.account?.accountLinking?.trustedProviders).toBeUndefined();
+  });
+
+  it("applies the session lifetime to the upstream auth config without adding plugins", () => {
+    const authConfig: Record<string, unknown> = { secret: "s" };
+    applyOidcAuthOptions(authConfig, { authOidc: null, authSessionTtlSeconds: 86400 }, {
+      access: {
+        getMembership: vi.fn(async () => null),
+        ensureMembership: vi.fn(async () => ({})),
+        setPrincipalGrants: vi.fn(async () => undefined),
+      },
+      logActivity: vi.fn(async () => ({})),
+    });
+    expect(authConfig).toEqual({ secret: "s", session: { expiresIn: 86400 } });
+  });
+});

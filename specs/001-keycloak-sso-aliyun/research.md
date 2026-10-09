@@ -81,7 +81,7 @@
 
 ## R7. 账号关联（FR-010）
 
-- **Decision**: 配置 `account.accountLinking.trustedProviders: ["keycloak"]`，仅当 Keycloak 返回 `email_verified=true` 时允许与已有本地账号关联；Keycloak 中由管理员创建的用户统一勾选"邮箱已验证"。
+- **Decision（2026-10-09 实施时修正）**: 启用 OIDC 时配置 `account.accountLinking = { enabled: true, requireLocalEmailVerified: false }`，**不**把 keycloak 列入 `trustedProviders`。better-auth 的隐式关联条件是"provider 可信 **或** provider 邮箱已验证"，并且默认还要求本地账号邮箱已验证（`oauth2/link-account.mjs:78-81`）。原方案把 keycloak 设为可信 provider，会跳过 Keycloak 的邮箱验证检查，与 FR-010 相反；而 Paperclip 邮箱密码注册不验证邮箱，默认的 `requireLocalEmailVerified` 会让应急管理员永远无法关联。修正后，关联的唯一前提是 Keycloak `email_verified=true`；Keycloak 中由管理员创建的用户统一勾选"邮箱已验证"，且 realm 关闭自助注册。
 - **Rationale**: 避免应急管理员与其 Keycloak 账号成为两个人；better-auth 原生支持。
 
 ## R8. 数字员工使用的模型（FR-011a）
