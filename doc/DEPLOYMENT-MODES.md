@@ -222,3 +222,41 @@ future public-hosted setup design explicitly changes this policy.
 - V1 contract: `doc/SPEC-implementation.md`
 - operator workflows: `doc/DEVELOPING.md` and `doc/CLI.md`
 - invite/join state map: `doc/spec/invite-flow.md`
+
+## 12. OIDC Single Sign-On (Keycloak)
+
+Authenticated deployments can sign users in through a Keycloak realm in
+addition to email and password. It is off unless all three required variables
+are set; a partial setup fails at startup.
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `PAPERCLIP_AUTH_OIDC_ISSUER` | yes | Realm URL, e.g. `https://sso.example.com/realms/acme` |
+| `PAPERCLIP_AUTH_OIDC_CLIENT_ID` | yes | Confidential client id |
+| `PAPERCLIP_AUTH_OIDC_CLIENT_SECRET` | yes | Client secret (never logged) |
+| `PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP` | no | JSON object `{"<keycloak-organization-alias>": "<company-id>"}`; empty or missing rejects every SSO sign-in |
+| `PAPERCLIP_AUTH_OIDC_LABEL` | no | Sign-in button label (default `Sign in with SSO`) |
+| `PAPERCLIP_AUTH_SESSION_TTL_SECONDS` | no | Session lifetime for all sign-ins; better-auth's default when unset |
+
+Behavior:
+
+- Keycloak client redirect URI: `<public-url>/api/auth/callback/keycloak`. Paperclip requests the
+  `openid profile email organization` scopes; the Keycloak realm must have Organizations enabled.
+- **Admission**: every SSO sign-in (first and returning) is checked against the organization claim.
+  Users whose organizations are not keys of the map are rejected with `error=org_not_allowed` and
+  no user is created. Removing a user from the organization blocks their next sign-in.
+- **Company membership**: on sign-in, the user joins each mapped company exactly as accepting a
+  default human invite would (`operator` role plus its default grants) and a
+  `company_membership.sso_joined` activity entry is written. Existing memberships and roles are
+  never changed, so roles managed in Paperclip survive every sign-in.
+- **Profile sync**: name and email are refreshed from Keycloak on every sign-in.
+- **Account linking**: a Keycloak account links to an existing local account with the same email
+  only when Keycloak reports the email as verified.
+- **Break-glass sign-in**: with `PAPERCLIP_AUTH_DISABLE_SIGN_UP=true`, email sign-up is closed but
+  existing email/password accounts still sign in. The sign-in page shows the SSO button first and
+  folds the password form behind an administrator entry.
+- `/api/health` adds `auth.oidc` (`enabled`, `providerId`, `label`) when SSO is on and omits it
+  otherwise; it never includes issuer, client or organization settings.
+
+Implementation: `server/src/auth/oidc.ts`. A single-server Alibaba Cloud deployment with Keycloak,
+including provisioning and an end-to-end test, lives in `deploy/aliyun/`.

@@ -1,8 +1,158 @@
 # 阿里云部署（Keycloak SSO 数字员工平台）
 
-设计依据：`specs/001-keycloak-sso-aliyun/`（规格、方案、调研、契约）。
+在**一台阿里云 ECS（中国大陆地域）**上运行 Paperclip + Keycloak 单点登录，推送代码即自动发布。设计依据见 `specs/001-keycloak-sso-aliyun/`（规格、方案、调研、契约）。
 
-> 部署手册的其余章节由任务 T049 补全。
+- [架构](#架构)
+- [首次部署](#首次部署)
+- [首个管理员与组织映射](#首个管理员与组织映射)
+- [在 Keycloak 中管理用户](#在-keycloak-中管理用户)
+- [日常发布与回滚](#日常发布与回滚)
+- [备份与恢复](#备份与恢复)
+- [Keycloak 升级与受管配置](#keycloak-升级与受管配置)
+- [配置数字员工](#配置数字员工)
+- [已知风险](#已知风险)
+- [测试](#测试)
+- [上游同步](#上游同步)
+
+## 架构
+
+```text
+                     ┌──────────────── ECS（单台） ────────────────┐
+  用户浏览器 ──443──▶│ caddy ──APP_DOMAIN──▶ paperclip ──▶ postgres │
+                     │   │                     └─ 数字员工子进程      │
+                     │   └──SSO_DOMAIN──▶ keycloak ──▶ postgres     │
+                     │ keycloak-config（每次部署运行一次）──▶ keycloak │
+                     │ cron 03:00 ──▶ backup.sh ──▶ OSS              │
+                     └──────────────────────────────────────────────┘
+```
+
+| 服务 | 作用 | 对外端口 |
+|---|---|---|
+| `caddy` | 反向代理、自动 HTTPS（Let's Encrypt）、Keycloak 管理后台按 IP 限制 | 80、443（唯一对外） |
+| `paperclip` | Paperclip 平台；数字员工作为子进程在此运行 | 无 |
+| `keycloak` | 单点登录（Keycloak 26.8.0） | 无 |
+| `postgres` | `paperclip`、`keycloak` 两个库，各自独立账号 | 无 |
+| `keycloak-config` | 一次性任务：运行 `keycloak/provision.sh` 初始化 realm、组织、客户端 | 无 |
+
+文件：
+
+| 位置 | 内容 | 是否入仓库 |
+|---|---|---|
+| `environments/<env>.env` | 非敏感参数：域名、地域、镜像仓库、OSS | 是 |
+| ECS `/opt/paperclip/.env` | 密钥和每台服务器自己的状态（模板见 `env.example`） | **否**，权限 600 |
+| ECS `/opt/paperclip/deploy/` | 当前版本的部署资产（每次发布从 ACR 的 `paperclip-deploy:<sha>` 更新） | — |
+| ECS `/opt/paperclip/state/{current,previous}` | 当前与上一个版本号，回滚用 | — |
+
+## 首次部署
+
+预计 2 小时内完成（SC-005）。
+
+### 1. 准备阿里云资源
+
+| 资源 | 要求 |
+|---|---|
+| ECS | 中国大陆地域；4 vCPU / 16 GB；系统盘 100 GB ESSD；**开启自动快照**（每日）；Alibaba Cloud Linux 3 或 Ubuntu 22.04+ |
+| 安全组 | 入方向只开放 80、443；SSH 仅限运维 IP（日常发布不需要 SSH） |
+| 域名 | 已 ICP 备案；两个子域名（如 `agents.<域名>`、`sso.<域名>`）A 记录指向 ECS 公网 IP |
+| 容器镜像服务 ACR | 个人版即可；与 ECS 同地域；建一个命名空间（如 `digital-workforce`） |
+| OSS | 一个备份桶，与 ECS 同地域；**生命周期规则：30 天后删除** |
+| RAM 角色（给 ECS） | 授予备份桶的写权限，绑定到 ECS；名字填到 `OSS_RAM_ROLE` |
+| RAM 用户（给 CI） | **只授权**云助手的 `ecs:RunCommand`、`ecs:DescribeInvocationResults`、`ecs:DescribeInvocations`，生成 AccessKey |
+| 云助手 | ECS 默认已安装云助手客户端 |
+
+### 2. 填写环境参数
+
+编辑 `environments/production.env`（入仓库，不含密钥）：ECS 实例 ID、地域、ACR 地址与命名空间、两个子域名、Keycloak 组织（名称、别名、邮箱域名）、OSS 桶与内网 endpoint、`OSS_RAM_ROLE`、ACME 邮箱、允许访问 Keycloak 管理后台的网段 `ADMIN_ALLOWED_CIDRS`。
+
+### 3. 配置 GitHub
+
+在你的 fork 中：
+
+1. **Settings → Actions**：启用 Actions（fork 默认禁用），并停用与本部署无关的上游工作流（例如 `docker.yml`、`release*.yml`），避免推送时误触发。
+2. **Settings → Environments** 新建 `production`，添加 Secrets：
+
+   | Secret | 用途 |
+   |---|---|
+   | `ACR_USERNAME` / `ACR_PASSWORD` | 推送镜像到 ACR |
+   | `ALIYUN_ACCESS_KEY_ID` / `ALIYUN_ACCESS_KEY_SECRET` | 第 1 步 CI 专用 RAM 用户的 AccessKey |
+
+### 4. 初始化服务器（只做一次）
+
+把 `deploy/aliyun` 复制到服务器（`scp -r` 或 `git clone` 后进入该目录），以 root 执行：
+
+```sh
+ACR_USERNAME=<ACR 用户名> ACR_PASSWORD=<ACR 密码> ./scripts/bootstrap.sh production
+```
+
+它会：安装 Docker 并设为开机自启；生成 `/opt/paperclip/.env`（随机密钥，已有的键不覆盖）；安装部署资产和 `/opt/paperclip/bin/remote-deploy.sh`；登录 ACR 的 VPC 地址；安装 ossutil；设置每天 03:00 的备份任务。可重复执行。
+
+### 5. 首次发布
+
+把要上线的提交推送到 `deploy/production` 分支，或在 GitHub Actions 里手动运行 **Deploy to Aliyun**。工作流会：运行部署资产测试 → 构建 `paperclip:<sha>`（amd64，带构建缓存）和 `paperclip-deploy:<sha>` → 把 Keycloak、PostgreSQL、Caddy 镜像同步到 ACR → 通过云助手在 ECS 上执行 `remote-deploy.sh` → 等待健康检查。
+
+首次发布完成后：`https://<APP_DOMAIN>` 是 Paperclip 登录页，`https://<SSO_DOMAIN>` 是 Keycloak，证书由 Caddy 自动申请。
+
+## 首个管理员与组织映射
+
+公网部署不允许在浏览器里直接认领实例，按以下步骤（FR-022，只做一次）：
+
+1. 在服务器上生成一次性邀请链接：
+
+   ```sh
+   cd /opt/paperclip/deploy
+   PAPERCLIP_IMAGE_TAG="$(cat /opt/paperclip/state/current)" \
+     docker compose --env-file environments/production.env --env-file /opt/paperclip/.env \
+     exec paperclip pnpm --silent paperclipai auth bootstrap-ceo --base-url https://<APP_DOMAIN>
+   ```
+
+2. 打开登录页，展开 **管理员应急登录**，用邮箱密码注册**应急管理员**（建议使用与日常账号不同的邮箱），然后打开第 1 步的邀请链接并接受。应急管理员成为实例管理员。
+3. 应急管理员创建第一个公司，在公司设置里复制公司 ID。
+4. 编辑服务器上的 `/opt/paperclip/.env`：
+
+   ```sh
+   PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP={"<KEYCLOAK_ORG_ALIAS>":"<公司 ID>"}
+   PAPERCLIP_AUTH_DISABLE_SIGN_UP=true
+   ```
+
+5. 重新发布一次（重新运行工作流，或在服务器上执行 `/opt/paperclip/bin/remote-deploy.sh production <当前 sha>`）。之后组织成员用企业账号登录会自动以普通成员（`operator`）身份加入该公司；邮箱密码注册关闭，只有应急管理员持有密码。
+
+在映射填写之前，所有企业账号登录都会被拒绝（fail closed）。
+
+## 在 Keycloak 中管理用户
+
+用管理员网段内的电脑打开 `https://<SSO_DOMAIN>/admin/`：
+
+- **首次登录**用户名 `provisioner`，口令是 `/opt/paperclip/.env` 里的 `KC_BOOTSTRAP_ADMIN_PASSWORD`。登录后在 master realm 为自己**另建管理员账号**，日常使用自己的账号。**不要删除 `provisioner`**：每次部署的 Keycloak 初始化要用它。
+- **新增员工**：在 realm 中创建用户，**勾选"邮箱已验证"**，设置初始密码，再在 **Organizations → <组织> → Members** 中把用户加入组织。用户第一次登录 Paperclip 时自动建号并加入公司，无需在 Paperclip 中邀请。
+- **员工离职**：在 Keycloak 中停用用户或将其移出组织。下次登录即被拒绝；已有会话最长 24 小时内失效（SC-004）。
+- **管理员角色**在 Paperclip 中设置（公司设置 → 成员），登录不会覆盖（FR-006）。
+- 用户自助注册已关闭（realm 设置由部署管理）。
+
+## 日常发布与回滚
+
+- **发布**：推送到 `deploy/production`（或手动运行工作流）。目标是 20 分钟内上线（SC-006）。
+- **健康检查**：`deploy.sh` 等待 `https://<APP_DOMAIN>/api/health` 返回 `status=ok` 且 `commit` 等于本次提交，同时 Keycloak `/health/ready` 就绪，最长 10 分钟。
+- **自动回滚**：检查失败时自动启动上一个版本，工作流以失败结束（GitHub 会发通知），退出码 2。
+- **手动回滚**：在服务器上执行 `/opt/paperclip/bin/remote-deploy.sh production <上一个 sha>`（见 `/opt/paperclip/state/previous`）。
+- 数据库迁移在 Paperclip 启动时自动执行。
+- `deploy.sh` 发现 `/opt/paperclip/.env` 中有 `ANTHROPIC_` 开头的变量会直接拒绝发布（见[配置数字员工](#配置数字员工)）。
+
+## 备份与恢复
+
+- **每天 03:00** `backup.sh`：备份 `paperclip`、`keycloak` 两个库（`pg_dump -Fc`）和 Paperclip 的附件与密钥主密钥（`data/storage`、`secrets`），通过 OSS 内网上传到 `<桶>/<YYYY-MM-DD>/`；同时检查两个域名的证书，**剩余不足 7 天会以失败退出**并写入 `/var/log/paperclip-backup.log`（请在云监控中对该日志设置告警）。
+- **云盘快照**：每日自动快照作为第二道保障。
+- **恢复**：`/opt/paperclip/deploy/scripts/restore.sh production <YYYY-MM-DD>`。脚本先下载备份，确认完整后才停服务，恢复两个库和数据卷，再启动并做健康检查。
+- **演练**：每季度在一台临时 ECS 上做一次恢复演练（FR-019a）。
+
+## Keycloak 升级与受管配置
+
+- **升级**（FR-028）：修改 `environments/production.env` 中的 `KEYCLOAK_VERSION`，提交并发布。工作流会把新版本同步到 ACR，Keycloak 启动时自动升级自身的数据库结构。升级前确认当天的备份已完成。
+- **受管配置**（FR-025）：`keycloak/provision.sh` 在每次部署时创建或更新下列字段，**在控制台对它们的手工修改会在下次部署时被恢复**：
+  - realm：启用、`organizationsEnabled`、禁止自助注册、要求验证邮箱、允许邮箱登录、禁止重复邮箱
+  - 客户端 `paperclip`：机密客户端、仅标准授权码流程、PKCE S256、client secret、回调地址 `https://<APP_DOMAIN>/api/auth/callback/keycloak`、Web Origin、登出回调
+  - 组织：名称、别名、启用、邮箱域名
+
+  用户、组织成员、其他客户端以及其余所有设置都不受影响。
 
 ## 配置数字员工
 
@@ -46,3 +196,47 @@
 ### 运行隔离
 
 三类数字员工都作为 Paperclip 容器里的子进程运行，各有独立的工作区 `/paperclip/workspaces/<agentId>`，但**文件系统不隔离**（research.md R16）。`claude_local` 自带的 bubblewrap 文件沙箱实测可用，但需要派生镜像并放宽容器的两项安全加固（`seccomp=unconfined`、`systempaths=unconfined`），首期不开启。
+
+## 已知风险
+
+- **单机**：平台、Keycloak、数据库在同一台 ECS 上，服务器故障时一起不可用。所有常驻服务都设置了 `restart: unless-stopped`，Docker 开机自启，服务器恢复后自动恢复；数据靠每日 OSS 备份和云盘快照保障。
+- **退出登录不退出 Keycloak**：在 Paperclip 退出后，如果浏览器里的 Keycloak 会话还在，再点企业登录可能不用输入密码（单点登出不在本期范围内）。
+- **数字员工不做文件隔离**：见[配置数字员工 → 运行隔离](#运行隔离)。
+
+## 测试
+
+| 命令 | 内容 | 需要 |
+|---|---|---|
+| `deploy/aliyun/tests/run.sh` | shellcheck、actionlint、部署脚本与 Compose 配置的 node:test 用例 | Docker、Node |
+| `deploy/aliyun/tests/keycloak-provision-test.sh` | 对真实 Keycloak 连续初始化两次，验证幂等与受管字段 | Docker |
+| `deploy/aliyun/tests/sso-e2e/run-all.sh` | 真实 Keycloak + 独立 Paperclip 实例的单点登录端到端检查 | Docker、Node、本仓库依赖 |
+| `deploy/aliyun/tests/stack-smoke/stack-smoke.sh <tag>` | 本机跑完整 Compose 栈（Caddy 内部证书），端到端检查、同版本重发、失败回滚 | Docker、本地构建的 `local/dw/paperclip:<tag>` 镜像、80/443 端口 |
+
+## 上游同步
+
+本平台基于 Paperclip 开源仓库的 fork。定制尽量集中在新文件里；**被修改的上游文件只有下面 7 个，且全部是追加代码**（FR-023、SC-009）：
+
+| 文件 | 改动 |
+|---|---|
+| `server/src/auth/better-auth.ts` | 追加一次 `applyOidcAuthOptions(...)` 调用（Keycloak 插件、准入与入公司钩子、会话有效期、账号关联） |
+| `server/src/config.ts` | 读取 `PAPERCLIP_AUTH_OIDC_*`、`PAPERCLIP_AUTH_SESSION_TTL_SECONDS` |
+| `server/src/routes/health.ts` | 响应中追加公开的 `auth.oidc` |
+| `ui/src/api/health.ts` | 健康检查类型追加 `auth` |
+| `ui/src/api/auth.ts` | 追加 `signInSocial()` |
+| `ui/src/pages/Auth.tsx` | 企业登录按钮、错误提示、应急登录折叠区 |
+| `doc/DEPLOYMENT-MODES.md` | 追加 "OIDC single sign-on" 小节 |
+
+其余都是新增文件：`server/src/auth/oidc.ts`、`ui/src/lib/sso-redirect.ts`、新的测试文件、`deploy/aliyun/`、`.github/workflows/deploy-aliyun.yml`、`specs/`。
+
+同步步骤：
+
+```sh
+git fetch upstream
+git rebase upstream/master          # 冲突只应出现在上表文件中
+pnpm install
+pnpm test -- server/src/__tests__/auth-oidc.test.ts server/src/__tests__/better-auth-oidc.test.ts \
+  server/src/__tests__/health-oidc.test.ts ui/src/pages/Auth.oidc.test.tsx
+deploy/aliyun/tests/run.sh
+deploy/aliyun/tests/sso-e2e/run-all.sh
+git diff upstream/master --stat -- server ui doc   # 被修改的上游文件应仍是上表 7 个
+```

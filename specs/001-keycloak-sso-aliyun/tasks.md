@@ -171,7 +171,7 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 - [X] T046 [P] [US4] 编写 `deploy/aliyun/scripts/backup.sh <env>`：对 `paperclip`、`keycloak` 两个库执行 `pg_dump -Fc`，打包 `/paperclip/instances/default/data/storage` 与 secrets 主密钥目录，经 OSS 内网 endpoint 上传到 `${OSS_BACKUP_BUCKET}/<日期>/`；检查 `APP_DOMAIN`、`SSO_DOMAIN` 证书剩余有效期，小于 7 天时以非 0 退出；README 中说明需配置 OSS 生命周期规则保留 30 天；使 T035 通过
 - [X] T047 [P] [US4] 编写 `deploy/aliyun/scripts/restore.sh <env> <backup-date>`：停止服务 → 从 OSS 下载指定日期备份 → 恢复两个库与数据卷 → 启动 → 健康检查；失败时以非 0 退出并保留现场；使 T036 通过
 - [X] T048 [US4] 编写 `.github/workflows/deploy-aliyun.yml`：触发条件为推送到 `deploy/production` 分支或 `workflow_dispatch`（输入 `env`，默认 `production`）；读取 `deploy/aliyun/environments/<env>.env`；用仓库 `Dockerfile` 构建 `--target production`，只构建 `linux/amd64`，启用 buildx 的 GitHub Actions 缓存（`cache-from: type=gha`、`cache-to: type=gha,mode=max`），并设置 `PAPERCLIP_BUILD_COMMIT=${{ github.sha }}`，推送 `paperclip:${{ github.sha }}` 到 ACR；把 keycloak、postgres、caddy 基础镜像同步到 ACR（已存在相同 tag 则跳过）；用 `ALIYUN_ACCESS_KEY_ID`/`ALIYUN_ACCESS_KEY_SECRET` 调用云助手 `RunCommand` 执行 `/opt/paperclip/deploy/scripts/deploy.sh <env> <sha>` 并轮询 `DescribeInvocationResults`；命令内容只含环境名与版本号；退出码非 0 时工作流失败；通过 T032 中的 actionlint 检查
-- [ ] T049 [US4] 完成 `deploy/aliyun/README.md` 的部署手册：准备阿里云资源（ECS 规格 4 vCPU / 16 GB / 100 GB ESSD 并开启自动快照、ACR 个人版、OSS 桶与生命周期规则、只授权云助手三个动作的 RAM 用户、两个子域名的 DNS 解析、安全组只开 80/443）；GitHub Secrets 清单；执行 `bootstrap.sh`；首次触发工作流；首个管理员与应急管理员流程（bootstrap 邀请 → 创建公司 → 填写 `PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP` → 打开 `PAPERCLIP_AUTH_DISABLE_SIGN_UP` → 重启）；在 Keycloak 中创建用户（勾选邮箱已验证并加入组织）；修改 Keycloak 初始管理员口令；备份恢复与每季度演练；已知风险（平台与 Keycloak 同机、退出后再次企业登录可能无需输入密码）；fork 的 GitHub Actions 设置（启用 Actions，并停用与本部署无关的上游工作流，如 `docker.yml`）；Keycloak 升级步骤（修改镜像版本 → 走同一发布流程 → 验证登录，FR-028）；列出 `keycloak/provision.sh` 负责的字段（这些字段的手工修改会在下次部署时恢复，FR-025）
+- [X] T049 [US4] 完成 `deploy/aliyun/README.md` 的部署手册：准备阿里云资源（ECS 规格 4 vCPU / 16 GB / 100 GB ESSD 并开启自动快照、ACR 个人版、OSS 桶与生命周期规则、只授权云助手三个动作的 RAM 用户、两个子域名的 DNS 解析、安全组只开 80/443）；GitHub Secrets 清单；执行 `bootstrap.sh`；首次触发工作流；首个管理员与应急管理员流程（bootstrap 邀请 → 创建公司 → 填写 `PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP` → 打开 `PAPERCLIP_AUTH_DISABLE_SIGN_UP` → 重启）；在 Keycloak 中创建用户（勾选邮箱已验证并加入组织）；修改 Keycloak 初始管理员口令；备份恢复与每季度演练；已知风险（平台与 Keycloak 同机、退出后再次企业登录可能无需输入密码）；fork 的 GitHub Actions 设置（启用 Actions，并停用与本部署无关的上游工作流，如 `docker.yml`）；Keycloak 升级步骤（修改镜像版本 → 走同一发布流程 → 验证登录，FR-028）；列出 `keycloak/provision.sh` 负责的字段（这些字段的手工修改会在下次部署时恢复，FR-025）
 - [ ] T050 [US4] 在真实阿里云环境按 quickstart.md 场景 5、6、7 验收：首次部署 2 小时内完成；推送小改动 20 分钟内上线且 `commit` 正确（记录构建与部署各自耗时，SC-006）；发布时保持一个数字员工任务正在运行，确认新版本启动后该任务被恢复或被明确标记为中断；推送一个启动即退出的版本，确认工作流失败、线上保持上一版本且中断不超过 5 分钟；执行备份并在临时 ECS 上恢复成功；结果记录到 PR 描述草稿
 - [ ] T051 [US4] 在生产环境按 quickstart.md 场景 8 配置三家模型的数字员工并各完成一个任务（SC-002a）；故意填错一个 Key，确认该任务明确失败、其他两个不受影响
 
@@ -185,7 +185,7 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 
 **Independent Test**: spec.md US5 的验收场景——合并上游后冲突仅限文档列明的定制点，且验证通过
 
-- [ ] T052 [US5] 在 `deploy/aliyun/README.md` 中新增"上游同步"一节：列出 7 个被修改的上游文件（`server/src/auth/better-auth.ts`、`server/src/config.ts`、`server/src/routes/health.ts`、`ui/src/api/health.ts`、`ui/src/api/auth.ts`、`ui/src/pages/Auth.tsx`、`doc/DEPLOYMENT-MODES.md`）及每处改动的目的；同步步骤 `git fetch upstream && git rebase upstream/master`，之后运行 `pnpm test -- server/src/__tests__/auth-oidc.test.ts` 与 quickstart 场景 1、3
+- [X] T052 [US5] 在 `deploy/aliyun/README.md` 中新增"上游同步"一节：列出 7 个被修改的上游文件（`server/src/auth/better-auth.ts`、`server/src/config.ts`、`server/src/routes/health.ts`、`ui/src/api/health.ts`、`ui/src/api/auth.ts`、`ui/src/pages/Auth.tsx`、`doc/DEPLOYMENT-MODES.md`）及每处改动的目的；同步步骤 `git fetch upstream && git rebase upstream/master`，之后运行 `pnpm test -- server/src/__tests__/auth-oidc.test.ts` 与 quickstart 场景 1、3
 - [ ] T053 [US5] 用 `git diff upstream/master --stat` 核对实际被修改的上游文件与 T052 清单完全一致；如有多出的文件，回收到新文件中或补进清单；做一次 `git rebase upstream/master` 演练并记录冲突情况
 
 **Checkpoint**: 定制点清单与实际改动一致
@@ -196,8 +196,8 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 
 **Purpose**: 文档、规范检查与交付前全量验证
 
-- [ ] T054 [P] 在 `doc/DEPLOYMENT-MODES.md` 中新增 "OIDC single sign-on" 小节（追加，不重写原文）：说明 `PAPERCLIP_AUTH_OIDC_*`、`PAPERCLIP_AUTH_SESSION_TTL_SECONDS` 变量、Keycloak 回调地址 `/api/auth/callback/keycloak`、组织准入与自动入公司的行为、与 `PAPERCLIP_AUTH_DISABLE_SIGN_UP` 配合实现应急登录
-- [ ] T055 [P] 确认并在 `deploy/aliyun/docker-compose.yml` 中加入关闭 Paperclip 第一方遥测的环境变量（research R15；只改部署配置，不改 `packages/shared/src/telemetry/` 代码），同时确认 `PAPERCLIP_ANNOUNCEMENTS_ENABLED=false`、`NPM_CONFIG_REGISTRY=https://registry.npmmirror.com` 已设置
+- [X] T054 [P] 在 `doc/DEPLOYMENT-MODES.md` 中新增 "OIDC single sign-on" 小节（追加，不重写原文）：说明 `PAPERCLIP_AUTH_OIDC_*`、`PAPERCLIP_AUTH_SESSION_TTL_SECONDS` 变量、Keycloak 回调地址 `/api/auth/callback/keycloak`、组织准入与自动入公司的行为、与 `PAPERCLIP_AUTH_DISABLE_SIGN_UP` 配合实现应急登录
+- [X] T055 [P] 确认并在 `deploy/aliyun/docker-compose.yml` 中加入关闭 Paperclip 第一方遥测的环境变量（research R15；只改部署配置，不改 `packages/shared/src/telemetry/` 代码），同时确认 `PAPERCLIP_ANNOUNCEMENTS_ENABLED=false`、`NPM_CONFIG_REGISTRY=https://registry.npmmirror.com` 已设置
 - [ ] T056 运行 `pnpm check:token-gates`，修复 `ui/src/pages/Auth.tsx` 中的任何违规
 - [ ] T057 运行交付前全量检查 `pnpm -r typecheck`、`pnpm test:run`、`pnpm build`、`deploy/aliyun/tests/run.sh`，全部通过；无法运行的项在 PR 中说明原因
 - [ ] T058 按 `.github/PULL_REQUEST_TEMPLATE.md` 填写全部章节（Thinking Path、What Changed、Verification、Risks、Model Used、Checklist），汇总 T020、T024、T030、T050、T051 的验证记录
