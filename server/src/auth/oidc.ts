@@ -322,3 +322,21 @@ export function applyOidcAuthOptions(
   authConfig.user = { ...(authConfig.user as object | undefined), ...options.user };
   authConfig.databaseHooks = { ...(authConfig.databaseHooks as object | undefined), ...options.databaseHooks };
 }
+
+/**
+ * Public sign-in info for `/api/health`: whether enterprise sign-in is on and
+ * the button label. Never includes issuer, client or organization settings.
+ * Returns null when OIDC is off so health responses stay byte-identical.
+ */
+export function oidcHealthStatus(
+  env: Record<string, string | undefined>,
+): { oidc: { enabled: true; providerId: string; label: string } } | null {
+  let authOidc: OidcConfig | null;
+  try {
+    authOidc = parseOidcConfig(env).authOidc;
+  } catch {
+    return null;
+  }
+  if (!authOidc) return null;
+  return { oidc: { enabled: true, providerId: OIDC_PROVIDER_ID, label: authOidc.label } };
+}

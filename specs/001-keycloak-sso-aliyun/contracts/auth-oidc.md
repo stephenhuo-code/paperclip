@@ -37,7 +37,7 @@
 }
 ```
 
-未启用时 `auth.oidc` 为 `{ "enabled": false }`。**不得**包含 issuer、client id、映射表等配置细节。
+未启用时**不返回 `auth` 字段**（与上游 `hiddenSettings` 的做法一致，保证未启用 OIDC 的部署响应与上游逐字节相同）；前端把缺失视为未启用。**不得**包含 issuer、client id、映射表等配置细节。匿名（脱敏）响应和登录后的完整响应都带此字段。
 
 ### `POST /api/auth/sign-in/social`
 
