@@ -4,14 +4,20 @@ import fs from "node:fs";
 import path from "node:path";
 import { createSandbox, DEPLOY_SRC } from "./helpers/sandbox.mjs";
 
-// Keys bootstrap.sh must generate: every key in env.example except the
-// organization map, which the admin fills in after creating the first company.
-const EXAMPLE_KEYS = fs
-  .readFileSync(path.join(DEPLOY_SRC, "env.example"), "utf8")
-  .split("\n")
-  .filter((line) => /^[A-Z][A-Z0-9_]*=/.test(line))
-  .map((line) => line.slice(0, line.indexOf("=")));
-const GENERATED_KEYS = EXAMPLE_KEYS.filter((key) => key !== "PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP");
+// env.example: empty values are secrets bootstrap.sh generates (except the
+// organization map, which the admin fills in after creating the first
+// company); non-empty values are defaults copied as-is.
+const EXAMPLE = Object.fromEntries(
+  fs
+    .readFileSync(path.join(DEPLOY_SRC, "env.example"), "utf8")
+    .split("\n")
+    .filter((line) => /^[A-Z][A-Z0-9_]*=/.test(line))
+    .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]),
+);
+const GENERATED_KEYS = Object.keys(EXAMPLE).filter(
+  (key) => EXAMPLE[key] === "" && key !== "PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP",
+);
+const DEFAULT_KEYS = Object.keys(EXAMPLE).filter((key) => EXAMPLE[key] !== "");
 
 function parseEnv(text) {
   return Object.fromEntries(
@@ -36,6 +42,13 @@ describe("bootstrap.sh secrets", () => {
     assert.ok(GENERATED_KEYS.length >= 8);
     for (const key of GENERATED_KEYS) assert.match(env[key] ?? "", /^generated-secret-\d+$/, key);
     assert.equal(env.PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP, "", "organization map is left for the admin");
+  });
+
+  it("copies non-secret defaults such as PAPERCLIP_AUTH_DISABLE_SIGN_UP=false", () => {
+    box.run("bootstrap.sh", ["production"], { BOOTSTRAP_STEPS: "secrets" });
+    const env = parseEnv(box.readEnv());
+    assert.ok(DEFAULT_KEYS.includes("PAPERCLIP_AUTH_DISABLE_SIGN_UP"));
+    for (const key of DEFAULT_KEYS) assert.equal(env[key], EXAMPLE[key], key);
   });
 
   it("never overwrites existing values", () => {

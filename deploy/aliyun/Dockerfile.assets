@@ -1,0 +1,5 @@
+# Deploy assets for one commit, pushed as paperclip-deploy:<sha>.
+# remote-deploy.sh copies /deploy out of this image; it is never run.
+FROM scratch
+COPY . /deploy
+CMD ["/deploy/scripts/remote-deploy.sh"]

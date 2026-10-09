@@ -51,12 +51,12 @@ check "realm has organizations enabled and self-registration off" \
   "true,false,true,false"
 check "organization acme exists" "$(KC get organizations -r dw --fields alias --format csv --noquotes)" "acme"
 CID=$(KC get clients -r dw -q clientId=paperclip --fields id --format csv --noquotes)
-check "confidential client paperclip exists" "$(KC get clients/$CID -r dw --fields publicClient,standardFlowEnabled,directAccessGrantsEnabled --format csv --noquotes)" "false,true,false"
-check "client redirect URI points at the Paperclip callback" "$(KC get clients/$CID -r dw --fields redirectUris --format csv --noquotes)" "https://agents.example.cn/api/auth/callback/keycloak"
-check "client uses the configured secret" "$(KC get clients/$CID/client-secret -r dw --fields value --format csv --noquotes)" "test-secret"
-check "client enforces PKCE S256" "$(KC get clients/$CID -r dw --fields 'attributes(pkce.code.challenge.method)' --format csv --noquotes)" "S256"
+check "confidential client paperclip exists" "$(KC get "clients/$CID" -r dw --fields publicClient,standardFlowEnabled,directAccessGrantsEnabled --format csv --noquotes)" "false,true,false"
+check "client redirect URI points at the Paperclip callback" "$(KC get "clients/$CID" -r dw --fields redirectUris --format csv --noquotes)" "https://agents.example.cn/api/auth/callback/keycloak"
+check "client uses the configured secret" "$(KC get "clients/$CID/client-secret" -r dw --fields value --format csv --noquotes)" "test-secret"
+check "client enforces PKCE S256" "$(KC get "clients/$CID" -r dw --fields 'attributes(pkce.code.challenge.method)' --format csv --noquotes)" "S256"
 check "organization scope is available to the client" \
-  "$(KC get clients/$CID/optional-client-scopes -r dw --fields name --format csv --noquotes | grep -c '^organization$')" "1"
+  "$(KC get "clients/$CID/optional-client-scopes" -r dw --fields name --format csv --noquotes | grep -c '^organization$')" "1"
 
 # Manual changes between deploys.
 ORG=$(KC get organizations -r dw --fields id --format csv --noquotes)
@@ -73,9 +73,9 @@ login
 check "still exactly one organization" "$(KC get organizations -r dw --fields id --format csv --noquotes | wc -l | tr -d ' ')" "1"
 check "still exactly one paperclip client" "$(KC get clients -r dw -q clientId=paperclip --fields id --format csv --noquotes | wc -l | tr -d ' ')" "1"
 check "manually created user is kept" "$(KC get users -r dw -q username=manual-user --fields username --format csv --noquotes)" "manual-user"
-check "manual organization membership is kept" "$(KC get organizations/$ORG/members -r dw --fields username --format csv --noquotes)" "manual-user"
+check "manual organization membership is kept" "$(KC get "organizations/$ORG/members" -r dw --fields username --format csv --noquotes)" "manual-user"
 check "owned field registrationAllowed is restored" "$(KC get realms/dw --fields registrationAllowed --format csv --noquotes)" "false"
-check "owned field redirectUris is restored" "$(KC get clients/$CID -r dw --fields redirectUris --format csv --noquotes)" "https://agents.example.cn/api/auth/callback/keycloak"
+check "owned field redirectUris is restored" "$(KC get "clients/$CID" -r dw --fields redirectUris --format csv --noquotes)" "https://agents.example.cn/api/auth/callback/keycloak"
 check "unmanaged realm setting is left alone" "$(KC get realms/dw --fields displayName --format csv --noquotes)" "Acme Workforce"
 
 exit "$FAILED"

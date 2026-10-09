@@ -1,0 +1,134 @@
+# Paperclip digital-workforce platform on a single ECS instance.
+# Rendered with two env files (see scripts/lib.sh):
+#   environments/<env>.env  non-secret settings (committed)
+#   /opt/paperclip/.env     secrets and per-server state (never committed)
+# Never add ANTHROPIC_* variables here: model endpoints and keys are set per
+# agent inside Paperclip (README "配置数字员工").
+name: paperclip
+
+services:
+  caddy:
+    image: ${ACR_REGISTRY_VPC}/${ACR_NAMESPACE}/caddy:${CADDY_VERSION}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      SSO_DOMAIN: ${SSO_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+      ADMIN_ALLOWED_CIDRS: ${ADMIN_ALLOWED_CIDRS}
+      # "tls internal" for local smoke tests; empty in production (ACME).
+      CADDY_TLS_DIRECTIVE: ${CADDY_TLS_DIRECTIVE:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      default:
+        # Containers reach both public names through Caddy, so Paperclip's
+        # OIDC discovery never depends on hairpin NAT to the public IP.
+        aliases:
+          - ${APP_DOMAIN}
+          - ${SSO_DOMAIN}
+    depends_on:
+      - paperclip
+      - keycloak
+
+  paperclip:
+    image: ${ACR_REGISTRY_VPC}/${ACR_NAMESPACE}/paperclip:${PAPERCLIP_IMAGE_TAG:?PAPERCLIP_IMAGE_TAG is required}
+    restart: unless-stopped
+    pids_limit: 2048
+    environment:
+      PAPERCLIP_DEPLOYMENT_MODE: authenticated
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: public
+      PAPERCLIP_PUBLIC_URL: https://${APP_DOMAIN}
+      DATABASE_URL: postgres://paperclip:${PAPERCLIP_DB_PASSWORD}@postgres:5432/paperclip
+      PAPERCLIP_MIGRATION_AUTO_APPLY: "true"
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      PAPERCLIP_AGENT_JWT_SECRET: ${PAPERCLIP_AGENT_JWT_SECRET}
+      PAPERCLIP_TOOL_ACTION_SIGNING_SECRET: ${PAPERCLIP_TOOL_ACTION_SIGNING_SECRET}
+      PAPERCLIP_AUTH_OIDC_ISSUER: https://${SSO_DOMAIN}/realms/${KEYCLOAK_REALM}
+      PAPERCLIP_AUTH_OIDC_CLIENT_ID: paperclip
+      PAPERCLIP_AUTH_OIDC_CLIENT_SECRET: ${PAPERCLIP_AUTH_OIDC_CLIENT_SECRET}
+      PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP: ${PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP:-}
+      PAPERCLIP_AUTH_OIDC_LABEL: ${PAPERCLIP_AUTH_OIDC_LABEL}
+      PAPERCLIP_AUTH_SESSION_TTL_SECONDS: "86400"
+      PAPERCLIP_AUTH_DISABLE_SIGN_UP: ${PAPERCLIP_AUTH_DISABLE_SIGN_UP:-false}
+      # Mainland China: no reachable announcements feed or telemetry endpoint,
+      # and runtime plugin installs go through a domestic npm mirror.
+      PAPERCLIP_ANNOUNCEMENTS_ENABLED: "false"
+      PAPERCLIP_TELEMETRY_DISABLED: "1"
+      DO_NOT_TRACK: "1"
+      NPM_CONFIG_REGISTRY: https://registry.npmmirror.com
+      DISABLE_AUTOUPDATER: "1"
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+      # Local smoke tests only: trust Caddy's internal CA for OIDC discovery.
+      NODE_EXTRA_CA_CERTS: ${PAPERCLIP_EXTRA_CA_CERTS:-}
+    volumes:
+      - paperclip-data:/paperclip
+      - caddy-data:/caddy-data:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  keycloak:
+    image: ${ACR_REGISTRY_VPC}/${ACR_NAMESPACE}/keycloak:${KEYCLOAK_VERSION}
+    restart: unless-stopped
+    command: ["start"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_HOSTNAME: https://${SSO_DOMAIN}
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: provisioner
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  keycloak-config:
+    image: ${ACR_REGISTRY_VPC}/${ACR_NAMESPACE}/keycloak:${KEYCLOAK_VERSION}
+    profiles: ["provision"]
+    restart: "no"
+    entrypoint: ["/bin/bash", "/provision/provision.sh"]
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      KC_BOOTSTRAP_ADMIN_USERNAME: provisioner
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      KEYCLOAK_ORG_NAME: ${KEYCLOAK_ORG_NAME}
+      KEYCLOAK_ORG_ALIAS: ${KEYCLOAK_ORG_ALIAS}
+      KEYCLOAK_ORG_DOMAIN: ${KEYCLOAK_ORG_DOMAIN}
+      APP_DOMAIN: ${APP_DOMAIN}
+      PAPERCLIP_AUTH_OIDC_CLIENT_SECRET: ${PAPERCLIP_AUTH_OIDC_CLIENT_SECRET}
+    volumes:
+      - ./keycloak/provision.sh:/provision/provision.sh:ro
+    depends_on:
+      - keycloak
+
+  postgres:
+    image: ${ACR_REGISTRY_VPC}/${ACR_NAMESPACE}/postgres:${POSTGRES_VERSION}
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PAPERCLIP_DB_PASSWORD: ${PAPERCLIP_DB_PASSWORD}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  paperclip-data:
+  pgdata:
+  caddy-data:
+  caddy-config:

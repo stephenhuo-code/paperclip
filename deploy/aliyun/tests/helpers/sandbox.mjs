@@ -12,7 +12,7 @@ export const DEPLOY_SRC = path.resolve(path.dirname(fileURLToPath(import.meta.ur
 const FAKE = String.raw`#!/usr/bin/env bash
 # Fake external command. Logs the call, then answers from FAKE_* variables.
 name="$(basename "$0")"
-printf '%s %s\n' "$name" "$*" >> "$FAKE_LOG"
+printf '%s %s%s\n' "$name" "$*" "${'${PAPERCLIP_IMAGE_TAG:+ [PAPERCLIP_IMAGE_TAG=$PAPERCLIP_IMAGE_TAG]}'}" >> "$FAKE_LOG"
 args=" $* "
 case "$name" in
   docker)
@@ -132,6 +132,7 @@ export function sampleEnv(extra = "") {
     "KC_BOOTSTRAP_ADMIN_PASSWORD=value-kc-admin",
     "PAPERCLIP_AUTH_OIDC_CLIENT_SECRET=value-oidc-secret",
     'PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP={"acme":"5facf42d-f31f-4698-9bc9-e38f876b1579"}',
+    "PAPERCLIP_AUTH_DISABLE_SIGN_UP=false",
     extra,
   ].join("\n");
 }

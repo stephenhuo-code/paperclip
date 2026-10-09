@@ -1,0 +1,22 @@
+{
+	email {$ACME_EMAIL}
+}
+
+# Paperclip (UI + API)
+{$APP_DOMAIN} {
+	{$CADDY_TLS_DIRECTIVE}
+	encode zstd gzip
+	reverse_proxy paperclip:3100
+}
+
+# Keycloak sign-in. The admin console is limited to ADMIN_ALLOWED_CIDRS (FR-027);
+# the management port (9000, health) is never proxied.
+{$SSO_DOMAIN} {
+	{$CADDY_TLS_DIRECTIVE}
+	@admin_outside_allowlist {
+		path /admin /admin/*
+		not remote_ip {$ADMIN_ALLOWED_CIDRS}
+	}
+	respond @admin_outside_allowlist 403
+	reverse_proxy keycloak:8080
+}

@@ -49,6 +49,7 @@ describe("docker-compose.yml", () => {
         "-f", path.join(DEPLOY_SRC, "docker-compose.yml"),
         "--env-file", path.join(DEPLOY_SRC, "environments", "production.env"),
         "--env-file", secrets,
+        "--profile", "provision",
         "config", "--format", "json",
       ],
       { encoding: "utf8", env: { ...process.env, PAPERCLIP_IMAGE_TAG: "2222222222222222222222222222222222222222" } },
@@ -70,9 +71,10 @@ describe("docker-compose.yml", () => {
     }
   });
 
-  it("restarts long-running services and runs keycloak-config once", () => {
+  it("restarts long-running services and runs keycloak-config once, only on demand", () => {
     for (const name of LONG_RUNNING) assert.equal(config.services[name].restart, "unless-stopped", name);
     assert.equal(config.services["keycloak-config"].restart, "no");
+    assert.deepEqual(config.services["keycloak-config"].profiles, ["provision"]);
   });
 
   it("pulls every image from the ACR VPC endpoint", () => {

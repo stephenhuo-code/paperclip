@@ -12,7 +12,7 @@ step() { echo; echo "== $1"; }
 
 step "shellcheck"
 mapfile -t SCRIPTS < <(cd "$REPO" && find deploy/aliyun -name '*.sh' -not -path '*/node_modules/*' | sort)
-docker run --rm -v "$REPO:/repo:ro" -w /repo koalaman/shellcheck:stable "${SCRIPTS[@]}" || FAILED=1
+docker run --rm -v "$REPO:/repo:ro" -w /repo koalaman/shellcheck:stable -x "${SCRIPTS[@]}" || FAILED=1
 
 step "actionlint"
 docker run --rm -v "$REPO:/repo:ro" -w /repo rhysd/actionlint:latest -color .github/workflows/deploy-aliyun.yml || FAILED=1

@@ -16,7 +16,7 @@ stop_server() {
   fi
   local leftover
   leftover="$(lsof -nP -iTCP:3199 -sTCP:LISTEN -t 2>/dev/null || true)"
-  if [ -n "$leftover" ]; then kill $leftover 2>/dev/null || true; fi
+  if [ -n "$leftover" ]; then echo "$leftover" | xargs kill 2>/dev/null || true; fi
   SERVER_PID=""
 }
 
