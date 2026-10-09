@@ -5,6 +5,8 @@
  * small, well-defined hook-in point. See specs/001-keycloak-sso-aliyun.
  */
 
+import { grantsForHumanRole } from "../services/company-member-roles.js";
+
 export interface OidcConfig {
   issuer: string;
   clientId: string;
@@ -98,4 +100,112 @@ export function parseOidcConfig(env: Env): ParsedOidcSettings {
     },
     authSessionTtlSeconds,
   };
+}
+
+export const OIDC_PROVIDER_ID = "keycloak";
+
+/**
+ * Organization aliases from a Keycloak `organization` claim. Keycloak emits
+ * either a list of aliases or, with id/attributes enabled on the mapper, a
+ * map keyed by alias; both are accepted.
+ */
+export function extractOrganizations(profile: unknown): string[] {
+  if (!profile || typeof profile !== "object") return [];
+  const claim = (profile as Record<string, unknown>).organization;
+  if (Array.isArray(claim)) {
+    return claim.filter((value): value is string => typeof value === "string" && value.length > 0);
+  }
+  if (claim && typeof claim === "object") return Object.keys(claim);
+  return [];
+}
+
+export interface OidcUserInfoValidationInput {
+  user: { email?: string | null };
+  source: {
+    action?: string;
+    method?: string;
+    oauth?: { providerId?: string; profile?: unknown };
+  };
+}
+
+/**
+ * Admission gate for better-auth's `user.validateUserInfo`. Only Keycloak
+ * sign-ins are checked; email/password (break-glass admin) and any other
+ * provider pass through untouched.
+ */
+export function validateOidcUserInfo(
+  config: OidcConfig,
+  input: OidcUserInfoValidationInput,
+): { error: "org_not_allowed" | "email_required" } | undefined {
+  if (input.source.method !== "oauth" || input.source.oauth?.providerId !== OIDC_PROVIDER_ID) {
+    return undefined;
+  }
+  if (!input.user.email) return { error: "email_required" };
+  const allowed = extractOrganizations(input.source.oauth.profile).some((alias) =>
+    Object.hasOwn(config.orgCompanyMap, alias),
+  );
+  return allowed ? undefined : { error: "org_not_allowed" };
+}
+
+export interface OidcMembershipDeps {
+  getMembership(companyId: string, principalType: "user", principalId: string): Promise<unknown>;
+  ensureMembership(
+    companyId: string,
+    principalType: "user",
+    principalId: string,
+    membershipRole: "operator",
+    status: "active",
+  ): Promise<unknown>;
+  setPrincipalGrants(
+    companyId: string,
+    principalType: "user",
+    principalId: string,
+    grants: ReturnType<typeof grantsForHumanRole>,
+    grantedByUserId: null,
+  ): Promise<unknown>;
+  logActivity(input: {
+    companyId: string;
+    actorType: "user";
+    actorId: string;
+    action: string;
+    entityType: string;
+    entityId: string;
+    details: Record<string, unknown>;
+  }): Promise<unknown>;
+}
+
+/**
+ * Adds the user to each company mapped from their Keycloak organizations,
+ * exactly as accepting a default human invite would (operator role plus its
+ * default grants). Existing memberships are never touched, so roles set in
+ * Paperclip survive every login.
+ */
+export async function reconcileOidcMemberships(
+  deps: OidcMembershipDeps,
+  input: { userId: string; organizations: string[]; orgCompanyMap: Record<string, string> },
+): Promise<{ joinedCompanyIds: string[] }> {
+  const joinedCompanyIds: string[] = [];
+  const seen = new Set<string>();
+  for (const organization of input.organizations) {
+    if (!Object.hasOwn(input.orgCompanyMap, organization)) continue;
+    const companyId = input.orgCompanyMap[organization]!;
+    if (seen.has(companyId)) continue;
+    seen.add(companyId);
+
+    if (await deps.getMembership(companyId, "user", input.userId)) continue;
+
+    await deps.ensureMembership(companyId, "user", input.userId, "operator", "active");
+    await deps.setPrincipalGrants(companyId, "user", input.userId, grantsForHumanRole("operator"), null);
+    await deps.logActivity({
+      companyId,
+      actorType: "user",
+      actorId: input.userId,
+      action: "company_membership.sso_joined",
+      entityType: "user",
+      entityId: input.userId,
+      details: { providerId: OIDC_PROVIDER_ID, organization },
+    });
+    joinedCompanyIds.push(companyId);
+  }
+  return { joinedCompanyIds };
 }
