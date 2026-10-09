@@ -99,11 +99,10 @@ ACR_USERNAME=<ACR 用户名> ACR_PASSWORD=<ACR 密码> ./scripts/bootstrap.sh pr
 1. 在服务器上生成一次性邀请链接：
 
    ```sh
-   cd /opt/paperclip/deploy
-   PAPERCLIP_IMAGE_TAG="$(cat /opt/paperclip/state/current)" \
-     docker compose --env-file environments/production.env --env-file /opt/paperclip/.env \
-     exec paperclip pnpm --silent paperclipai auth bootstrap-ceo --base-url https://<APP_DOMAIN>
+   /opt/paperclip/deploy/scripts/bootstrap-invite.sh production
    ```
+
+   脚本只输出一行邀请链接。容器完全通过环境变量配置，脚本会给 CLI 临时生成一个最小配置文件，用完即删，不影响服务本身；它直接用 node 运行 CLI，不经过 pnpm（pnpm 会在运行时通过 Corepack 从 npmjs.org 下载自身）。
 
 2. 打开登录页，展开 **管理员应急登录**，用邮箱密码注册**应急管理员**（建议使用与日常账号不同的邮箱），然后打开第 1 步的邀请链接并接受。应急管理员成为实例管理员。
 3. 应急管理员创建第一个公司，在公司设置里复制公司 ID。

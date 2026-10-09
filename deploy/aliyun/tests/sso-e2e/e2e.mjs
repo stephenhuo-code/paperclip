@@ -275,7 +275,10 @@ async function verify(companyId) {
   const lou = new Browser();
   const louLogin = await ssoLogin(lou, "local-user");
   check("unverified Keycloak email is not linked to the local account",
-    louLogin.target.includes("error=") || louLogin.target.startsWith("keycloak-required-action:"), louLogin.target);
+    // Either Paperclip refuses to link (standalone realm), or a realm with verifyEmail=true
+    // stops the user at Keycloak's verify-email step before Paperclip is reached.
+    louLogin.target.includes("error=") || louLogin.target.startsWith("keycloak-required-action:")
+      || louLogin.target.includes("/login-actions/required-action"), louLogin.target);
   check("local account has no Keycloak link", sql(`select count(*) from account where user_id='${localId}' and provider_id='keycloak'`) === "0");
 
   // FR-009: break-glass admin still signs in with a password.

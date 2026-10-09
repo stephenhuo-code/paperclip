@@ -65,11 +65,11 @@ services:
       NPM_CONFIG_REGISTRY: https://registry.npmmirror.com
       DISABLE_AUTOUPDATER: "1"
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
-      # Local smoke tests only: trust Caddy's internal CA for OIDC discovery.
+      # Local smoke tests only: trust Caddy's internal CA (copied into the data
+      # volume by stack-smoke.sh). Never mount caddy-data here: it holds TLS keys.
       NODE_EXTRA_CA_CERTS: ${PAPERCLIP_EXTRA_CA_CERTS:-}
     volumes:
       - paperclip-data:/paperclip
-      - caddy-data:/caddy-data:ro
     depends_on:
       postgres:
         condition: service_healthy

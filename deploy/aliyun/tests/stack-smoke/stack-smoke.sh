@@ -80,7 +80,10 @@ set -e
 check "first deploy succeeds" "$first_deploy" "0"
 wait "$COPIER_PID" 2>/dev/null || true
 COPIER_PID=""
-# Paperclip may have started before Caddy's CA existed; restart so Node trusts it.
+# Give Paperclip only the public root certificate (readable by the node user),
+# then restart so Node trusts it for OIDC discovery.
+PAPERCLIP_IMAGE_TAG="$TAG" compose cp "$CA_FILE" paperclip:/paperclip/caddy-root.crt >/dev/null
+PAPERCLIP_IMAGE_TAG="$TAG" compose exec -T paperclip chmod 644 /paperclip/caddy-root.crt
 PAPERCLIP_IMAGE_TAG="$TAG" compose restart paperclip >/dev/null
 curl -s -o /dev/null --cacert "$CA_FILE" --retry 60 --retry-connrefused --retry-all-errors --retry-delay 2 \
   "https://$APP_DOMAIN/api/health"
@@ -101,11 +104,9 @@ KC_CONTAINER=paperclip-keycloak-1 KC_REALM=digital-workforce KC_ADMIN_USER=provi
   KC_ADMIN_PASSWORD="$KC_ADMIN_PASSWORD" APP_URL="https://$APP_DOMAIN" "$E2E/keycloak-setup.sh" >/dev/null
 
 echo "== bootstrap invite (public exposure: no browser claim)"
-invite_output="$(PAPERCLIP_IMAGE_TAG="$TAG" compose exec -T paperclip \
-  pnpm --silent paperclipai auth bootstrap-ceo --base-url "https://$APP_DOMAIN" 2>&1 || true)"
-INVITE_URL="$(grep -oE "https://$APP_DOMAIN/invite/[A-Za-z0-9_-]+" <<<"$invite_output" | head -n 1 || true)"
+INVITE_URL="$(PAPERCLIP_ROOT="$PAPERCLIP_ROOT" "$SCRIPTS/bootstrap-invite.sh" "$ENV_NAME" || true)"
 check "bootstrap-ceo prints a one-time invite URL" "$([ -n "$INVITE_URL" ] && echo yes || echo no)" "yes"
-[ -n "$INVITE_URL" ] || { echo "$invite_output" >&2; exit 1; }
+[ -n "$INVITE_URL" ] || exit 1
 
 export NODE_EXTRA_CA_CERTS="$CA_FILE"
 export E2E_APP_URL="https://$APP_DOMAIN" E2E_PG_CONTAINER=paperclip-postgres-1

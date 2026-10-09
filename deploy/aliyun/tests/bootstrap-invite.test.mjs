@@ -19,8 +19,11 @@ describe("bootstrap-invite.sh", () => {
 
   it("runs the CLI inside the paperclip container as the node user, without pnpm", () => {
     box.run("bootstrap-invite.sh", ["production"]);
-    const call = box.calls().find((c) => c.includes(" exec -T --user node paperclip "));
-    assert.ok(call, box.calls().join("\n"));
+    // The inner script spans several lines, so check the whole call log.
+    const log = box.calls().join("\n");
+    const start = log.indexOf(" exec -T --user node paperclip ");
+    assert.ok(start >= 0, log);
+    const call = log.slice(start);
     assert.ok(call.includes("auth bootstrap-ceo"));
     assert.ok(!/\bpnpm\b/.test(call), "pnpm would download itself through Corepack at runtime");
     assert.match(call, /\[PAPERCLIP_IMAGE_TAG=2222222222222222222222222222222222222222\]/);

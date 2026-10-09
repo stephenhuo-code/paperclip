@@ -130,6 +130,14 @@ describe("docker-compose.yml", () => {
     assert.ok(targets(config.services.caddy).some((t) => t.startsWith("caddy-data:")));
   });
 
+  it("never mounts Caddy's data (TLS private keys) into another service", () => {
+    for (const [name, service] of Object.entries(config.services)) {
+      if (name === "caddy") continue;
+      const sources = (service.volumes ?? []).map((v) => v.source);
+      assert.ok(!sources.includes("caddy-data") && !sources.includes("caddy-config"), name);
+    }
+  });
+
   it("keeps the paperclip pid limit from the upstream compose file", () => {
     assert.equal(config.services.paperclip.pids_limit, 2048);
   });

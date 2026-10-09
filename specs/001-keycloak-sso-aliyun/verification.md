@@ -71,3 +71,27 @@ US3 的单元测试（会话有效期、账号关联配置、应急登录折叠�
   | `ui/src/pages/Auth.tsx` | 68 | 0 |
 
 - 演练时 `upstream/master` 没有新提交（落后 0 个），`git rebase upstream/master` 无事可做。由于上游文件只有追加，未来冲突只可能出现在这 7 个文件中上游恰好改动的相同位置，属 SC-009 允许范围。
+
+## T043 本地全栈冒烟（2026-10-09）
+
+- 命令：`deploy/aliyun/tests/stack-smoke/stack-smoke.sh 0cb6bca2ac19ca262fd29a6a15e8a424d6b60def`
+- 镜像：用仓库 `Dockerfile`（`--target production`，`PAPERCLIP_BUILD_COMMIT` 为同一提交）本地构建，9.25 GB。
+- 环境：真实的 `deploy/aliyun/docker-compose.yml`、`deploy.sh`、`bootstrap.sh`、`bootstrap-invite.sh`、`keycloak/provision.sh`；Caddy 使用内部证书；域名 `agents.127.0.0.1.nip.io`、`sso.127.0.0.1.nip.io`；exposure 为 `public`（与生产相同）。
+- 结果：**45/45 通过**。
+
+| 阶段 | 检查 | 结果 |
+|---|---|---|
+| 首次部署 | `deploy.sh` 成功（健康检查比对 commit、Keycloak 就绪） | ✅ |
+| 边缘 | Paperclip 走 HTTPS 且 `auth.oidc.enabled`；Keycloak 发现文档公开；管理后台在 `ADMIN_ALLOWED_CIDRS` 之外返回 403；9000 端口未发布 | ✅ 4/4 |
+| 首个管理员 | `bootstrap-invite.sh` 输出一次性邀请链接；应急管理员注册并接受邀请（202）；创建公司；无映射时 fail closed | ✅ 7/7 |
+| 重新部署 | 填入组织映射后同版本重新发布成功 | ✅ |
+| 端到端 | 与 `sso-e2e` 相同的 29 项（单点登录、入公司与权限、私有任务隔离、角色保持、资料同步、退出、移出组织、24 小时会话、账号关联等） | ✅ 29/29 |
+| 回滚 | 部署不存在的镜像：退出码 2、版本记录不变、上一版本继续服务 | ✅ 3/3 |
+
+实测中发现并修正的问题：
+
+1. **CLI 在生产容器里不可用**：容器只用环境变量配置，`paperclipai auth bootstrap-ceo` 找不到 `config.json`；且 `pnpm` 会在运行时通过 Corepack 从 npmjs.org 下载自身（国内不可靠）。新增 `scripts/bootstrap-invite.sh`：只给这次 CLI 调用在 `/tmp` 生成最小配置（数据库地址与公网地址取自容器环境），直接用 node 运行 CLI，用完即删（node:test 4 项）。
+2. **Caddy 数据卷挂进了 paperclip 容器**（为本地信任内部 CA 而加）：该卷含 TLS 私钥，而数字员工运行在 paperclip 容器里。已移除挂载，并加测试禁止任何其他服务挂载 Caddy 的卷；本地冒烟改为只把根证书（公钥）复制进 paperclip 数据卷。
+3. **realm 开启 `verifyEmail` 后**，邮箱未验证的用户会停在 Keycloak 的"验证邮箱"页，不会回到 Paperclip，也就不会发生账号关联；e2e 检查已兼容这种结果。
+
+修改后重跑：`sso-e2e/run-all.sh` 仍为 38/38，`deploy/aliyun/tests/run.sh`（shellcheck、actionlint、node:test 40 项）通过。
