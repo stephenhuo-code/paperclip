@@ -55,3 +55,19 @@ US3 的单元测试（会话有效期、账号关联配置、应急登录折叠�
 | B 直接访问 A 的私有任务返回 404 | US2 场景 3 | ✅ |
 | A 能打开自己的私有任务 | US2 场景 3 | ✅ |
 | 活动日志 `issue.created` 的 actor 为 A | FR-012、US2 场景 2 | ✅ |
+
+## T053 上游同步核对（2026-10-09）
+
+- `git diff --diff-filter=M` 对比与 `upstream/master` 的分叉点：被修改的上游文件**恰好是** `deploy/aliyun/README.md`"上游同步"表中的 7 个，**全部为纯追加（删除行数均为 0）**：
+
+  | 文件 | 新增 | 删除 |
+  |---|---|---|
+  | `doc/DEPLOYMENT-MODES.md` | 38 | 0 |
+  | `server/src/auth/better-auth.ts` | 7 | 0 |
+  | `server/src/config.ts` | 6 | 0 |
+  | `server/src/routes/health.ts` | 4 | 0 |
+  | `ui/src/api/auth.ts` | 7 | 0 |
+  | `ui/src/api/health.ts` | 4 | 0 |
+  | `ui/src/pages/Auth.tsx` | 68 | 0 |
+
+- 演练时 `upstream/master` 没有新提交（落后 0 个），`git rebase upstream/master` 无事可做。由于上游文件只有追加，未来冲突只可能出现在这 7 个文件中上游恰好改动的相同位置，属 SC-009 允许范围。

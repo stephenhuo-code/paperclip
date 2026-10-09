@@ -186,7 +186,7 @@ description: "Task list for 基于 Keycloak 单点登录的数字员工平台（
 **Independent Test**: spec.md US5 的验收场景——合并上游后冲突仅限文档列明的定制点，且验证通过
 
 - [X] T052 [US5] 在 `deploy/aliyun/README.md` 中新增"上游同步"一节：列出 7 个被修改的上游文件（`server/src/auth/better-auth.ts`、`server/src/config.ts`、`server/src/routes/health.ts`、`ui/src/api/health.ts`、`ui/src/api/auth.ts`、`ui/src/pages/Auth.tsx`、`doc/DEPLOYMENT-MODES.md`）及每处改动的目的；同步步骤 `git fetch upstream && git rebase upstream/master`，之后运行 `pnpm test -- server/src/__tests__/auth-oidc.test.ts` 与 quickstart 场景 1、3
-- [ ] T053 [US5] 用 `git diff upstream/master --stat` 核对实际被修改的上游文件与 T052 清单完全一致；如有多出的文件，回收到新文件中或补进清单；做一次 `git rebase upstream/master` 演练并记录冲突情况
+- [X] T053 [US5] 用 `git diff upstream/master --stat` 核对实际被修改的上游文件与 T052 清单完全一致；如有多出的文件，回收到新文件中或补进清单；做一次 `git rebase upstream/master` 演练并记录冲突情况
 
 **Checkpoint**: 定制点清单与实际改动一致
 
