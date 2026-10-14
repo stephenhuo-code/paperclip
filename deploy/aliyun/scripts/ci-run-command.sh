@@ -13,6 +13,8 @@ TAG="$2"
 : "${ALIYUN_REGION:?}" "${ECS_INSTANCE_ID:?}"
 [[ "$ENV_NAME" =~ ^[a-z0-9-]+$ ]] || { echo "invalid environment name" >&2; exit 1; }
 [[ "$TAG" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid commit sha" >&2; exit 1; }
+# The CLI needs a client region of its own; --RegionId only fills the API call.
+export ALIBABA_CLOUD_REGION_ID="$ALIYUN_REGION"
 POLL_SECONDS="${POLL_SECONDS:-10}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-1800}"
 
