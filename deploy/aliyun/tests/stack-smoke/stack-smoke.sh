@@ -133,6 +133,12 @@ check "redeploy succeeds" "$second_deploy" "0"
 echo "== e2e verify"
 node "$E2E/e2e.mjs" verify "$COMPANY_ID" || FAILED=1
 
+echo "== restart keeps permissions revoked by SSO (specs/002-agent-governance)"
+PAPERCLIP_IMAGE_TAG="$TAG" compose restart paperclip >/dev/null
+curl -sf -o /dev/null --cacert "$CA_FILE" --retry 60 --retry-connrefused --retry-all-errors --retry-delay 2 \
+  "https://$APP_DOMAIN/api/health"
+node "$E2E/e2e.mjs" after-restart || FAILED=1
+
 echo "== failed rollout rolls back"
 set +e
 DEPLOY_SKIP_PULL=1 DEPLOY_HEALTH_CA_FILE="$CA_FILE" DEPLOY_HEALTH_TIMEOUT_SECONDS=60 \

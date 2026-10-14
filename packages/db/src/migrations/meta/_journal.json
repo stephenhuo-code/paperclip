@@ -2227,6 +2227,13 @@
       "when": 1791490887468,
       "tag": "0319_heavy_captain_midlands",
       "breakpoints": true
+    },
+    {
+      "idx": 320,
+      "version": "7",
+      "when": 1791929966932,
+      "tag": "0320_fixed_northstar",
+      "breakpoints": true
     }
   ]
 }

@@ -64,4 +64,19 @@ for member in "$USER_A" "$USER_B" "$USER_ADMIN" "$USER_LOCAL" "$USER_D"; do
   $KC create "organizations/$ORG_ID/members" -r "$KC_REALM" -b "\"$member\"" >/dev/null 2>&1 || true
 done
 
+# Agent governance (specs/002-agent-governance): agent-creator role, the
+# paperclip_roles ID-token claim (same mapper as keycloak/provision.sh) and
+# the role for user A only.
+if ! $KC get "clients/$CLIENT_ID/roles/agent-creator" -r "$KC_REALM" >/dev/null 2>&1; then
+  $KC create "clients/$CLIENT_ID/roles" -r "$KC_REALM" -s name=agent-creator >/dev/null
+fi
+if [ -z "$($KC get "clients/$CLIENT_ID/protocol-mappers/models" -r "$KC_REALM" --fields name --format csv --noquotes | grep '^paperclip-roles$' || true)" ]; then
+  $KC create "clients/$CLIENT_ID/protocol-mappers/models" -r "$KC_REALM" \
+    -s name=paperclip-roles -s protocol=openid-connect -s protocolMapper=oidc-usermodel-client-role-mapper \
+    -s 'config."claim.name"=paperclip_roles' -s 'config."jsonType.label"=String' -s 'config.multivalued=true' \
+    -s 'config."usermodel.clientRoleMapping.clientId"=paperclip' \
+    -s 'config."id.token.claim"=true' -s 'config."access.token.claim"=false' -s 'config."userinfo.token.claim"=false' >/dev/null
+fi
+$KC add-roles -r "$KC_REALM" --uusername user-a --cclientid paperclip --rolename agent-creator >/dev/null
+
 echo "client=$CLIENT_ID org=$ORG_ID userA=$USER_A userB=$USER_B"

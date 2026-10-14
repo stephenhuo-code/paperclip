@@ -91,6 +91,7 @@ import {
   toolAccessService,
   workspaceOperationService,
 } from "./services/index.js";
+import { oidcSkipHumanGrant } from "./auth/oidc.js";
 import { questionResponseDeliveryService } from "./services/question-response-delivery.js";
 import { deliverNativeQuestionResponse } from "./services/native-runtime/native-question-bridge.js";
 import { queueIssueAssignmentWakeup } from "./services/issue-assignment-wakeup.js";
@@ -704,7 +705,8 @@ async function startServerWithDatabaseTeardown(
   if (config.deploymentMode === "local_trusted") {
     await ensureLocalTrustedBoardPrincipal(db as any);
   }
-  const accessBackfill = await backfillPrincipalAccessCompatibility(db as any);
+  const accessBackfillOptions = config.authOidc ? { skipHumanGrant: await oidcSkipHumanGrant(db as any) } : {};
+  const accessBackfill = await backfillPrincipalAccessCompatibility(db as any, accessBackfillOptions);
   if (accessBackfill.agentMembershipsInserted > 0 || accessBackfill.humanGrantsInserted > 0) {
     logger.info(accessBackfill, "Backfilled principal access compatibility records");
   }

@@ -9,7 +9,10 @@
 #   client: paperclip - confidential, standard flow only, PKCE S256, secret,
 #           redirect URI, web origin, post-logout redirect
 #   organization: alias, name, enabled, domain
-# Never touched: users, organization members, other clients, any other setting.
+#   client role: paperclip/agent-creator (created when missing)
+#   client mapper: paperclip-roles (paperclip client roles -> ID-token claim paperclip_roles)
+# Never touched: users, role assignments, organization members, other clients,
+# any other setting.
 set -euo pipefail
 
 : "${KEYCLOAK_URL:?}" "${KC_BOOTSTRAP_ADMIN_USERNAME:?}" "${KC_BOOTSTRAP_ADMIN_PASSWORD:?}"
@@ -62,6 +65,34 @@ else
   kc create clients -r "$realm" -s clientId=paperclip "${client_fields[@]}" >/dev/null 2>&1
   echo "client paperclip created"
 fi
+client_id="$(kc get clients -r "$realm" -q clientId=paperclip --fields id --format csv --noquotes)"
+
+# Agent governance (specs/002-agent-governance): operators with this client
+# role may create agents. Paperclip reads it from the paperclip_roles claim.
+if ! kc get "clients/$client_id/roles/agent-creator" -r "$realm" >/dev/null 2>&1; then
+  kc create "clients/$client_id/roles" -r "$realm" -s name=agent-creator \
+    -s "description=Can create Paperclip agents" >/dev/null 2>&1
+  echo "client role agent-creator created"
+fi
+mapper_fields=(
+  -s name=paperclip-roles -s protocol=openid-connect -s protocolMapper=oidc-usermodel-client-role-mapper
+  -s 'config."claim.name"=paperclip_roles' -s 'config."jsonType.label"=String' -s 'config.multivalued=true'
+  -s 'config."usermodel.clientRoleMapping.clientId"=paperclip'
+  -s 'config."id.token.claim"=true' -s 'config."access.token.claim"=false'
+  -s 'config."userinfo.token.claim"=false' -s 'config."introspection.token.claim"=false'
+)
+mapper_id=""
+while IFS=, read -r id name; do
+  if [ "$name" = paperclip-roles ]; then mapper_id="$id"; fi
+done < <(kc get "clients/$client_id/protocol-mappers/models" -r "$realm" --fields id,name --format csv --noquotes)
+if [ -n "$mapper_id" ]; then
+  kc update "clients/$client_id/protocol-mappers/models/$mapper_id" -r "$realm" "${mapper_fields[@]}"
+  echo "client mapper paperclip-roles updated"
+else
+  kc create "clients/$client_id/protocol-mappers/models" -r "$realm" "${mapper_fields[@]}" >/dev/null 2>&1
+  echo "client mapper paperclip-roles created"
+fi
+
 # The built-in "organization" client scope stays optional on the client:
 # Paperclip requests it explicitly and its mapper adds the claim to the ID token.
 

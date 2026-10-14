@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  extractAgentRoles,
   extractOrganizations,
+  oidcSkipsHumanGrant,
   parseOidcConfig,
   reconcileOidcMemberships,
+  syncOidcAgentPermissions,
   validateOidcUserInfo,
   type OidcConfig,
 } from "../auth/oidc.js";
@@ -274,5 +277,140 @@ describe("reconcileOidcMemberships", () => {
 
     expect(result.joinedCompanyIds).toEqual([COMPANY_ID, OTHER_COMPANY_ID]);
     expect(d.ensureMembership).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("extractAgentRoles", () => {
+  it("keeps only the known agent-creator role", () => {
+    expect(extractAgentRoles({ paperclip_roles: ["agent-creator", "agent-configurer", "other"] })).toEqual([
+      "agent-creator",
+    ]);
+  });
+
+  it("treats a missing or malformed claim as no roles", () => {
+    expect(extractAgentRoles({})).toEqual([]);
+    expect(extractAgentRoles({ paperclip_roles: "agent-creator" })).toEqual([]);
+    expect(extractAgentRoles({ paperclip_roles: [1, null] })).toEqual([]);
+    expect(extractAgentRoles(null)).toEqual([]);
+  });
+});
+
+describe("syncOidcAgentPermissions", () => {
+  function deps(options: { role?: string; status?: string; keys?: string[] } = {}) {
+    const membership = options.role === undefined
+      ? { membershipRole: "operator", status: options.status ?? "active" }
+      : options.role === "none"
+        ? null
+        : { membershipRole: options.role, status: options.status ?? "active" };
+    return {
+      getMembership: vi.fn(async () => membership),
+      listPrincipalGrants: vi.fn(async () =>
+        (options.keys ?? ["agents:create", "agents:configure", "tasks:assign"]).map((permissionKey) => ({ permissionKey })),
+      ),
+      setPrincipalPermission: vi.fn(async () => undefined),
+      insertMissingGrants: vi.fn(async () => 1),
+      logActivity: vi.fn(async () => ({})),
+    };
+  }
+
+  it("keeps agents:create for an operator with the role and revokes agents:configure", async () => {
+    const d = deps();
+    await syncOidcAgentPermissions(d, { userId: "user-a", roles: ["agent-creator"], companyIds: [COMPANY_ID] });
+
+    expect(d.insertMissingGrants).not.toHaveBeenCalled();
+    expect(d.setPrincipalPermission).toHaveBeenCalledTimes(1);
+    expect(d.setPrincipalPermission).toHaveBeenCalledWith(COMPANY_ID, "user", "user-a", "agents:configure", false, null);
+    expect(d.logActivity).toHaveBeenCalledWith({
+      companyId: COMPANY_ID,
+      actorType: "user",
+      actorId: "user-a",
+      action: "company_membership.sso_permissions_synced",
+      entityType: "user",
+      entityId: "user-a",
+      details: { providerId: "keycloak", granted: [], revoked: ["agents:configure"] },
+    });
+  });
+
+  it("revokes agents:create from an operator without the role", async () => {
+    const d = deps();
+    await syncOidcAgentPermissions(d, { userId: "user-b", roles: [], companyIds: [COMPANY_ID] });
+
+    expect(d.setPrincipalPermission).toHaveBeenCalledWith(COMPANY_ID, "user", "user-b", "agents:create", false, null);
+    expect(d.setPrincipalPermission).toHaveBeenCalledWith(COMPANY_ID, "user", "user-b", "agents:configure", false, null);
+    expect(d.setPrincipalPermission).toHaveBeenCalledTimes(2);
+    expect(d.logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ details: { providerId: "keycloak", granted: [], revoked: ["agents:create", "agents:configure"] } }),
+    );
+  });
+
+  it("grants agents:create without touching the membership role", async () => {
+    const d = deps({ keys: ["tasks:assign"] });
+    await syncOidcAgentPermissions(d, { userId: "user-a", roles: ["agent-creator"], companyIds: [COMPANY_ID] });
+
+    expect(d.insertMissingGrants).toHaveBeenCalledWith(
+      COMPANY_ID,
+      "user",
+      "user-a",
+      [{ permissionKey: "agents:create", scope: null }],
+      null,
+    );
+    expect(d.setPrincipalPermission).not.toHaveBeenCalled();
+    expect(d.logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ details: { providerId: "keycloak", granted: ["agents:create"], revoked: [] } }),
+    );
+  });
+
+  it("writes nothing when the permissions already match", async () => {
+    const d = deps({ keys: ["agents:create", "tasks:assign"] });
+    await syncOidcAgentPermissions(d, { userId: "user-a", roles: ["agent-creator"], companyIds: [COMPANY_ID] });
+
+    expect(d.insertMissingGrants).not.toHaveBeenCalled();
+    expect(d.setPrincipalPermission).not.toHaveBeenCalled();
+    expect(d.logActivity).not.toHaveBeenCalled();
+  });
+
+  it.each(["owner", "admin", "viewer", "none"])("leaves %s memberships untouched", async (role) => {
+    const d = deps({ role });
+    await syncOidcAgentPermissions(d, { userId: "user-a", roles: [], companyIds: [COMPANY_ID] });
+
+    expect(d.listPrincipalGrants).not.toHaveBeenCalled();
+    expect(d.setPrincipalPermission).not.toHaveBeenCalled();
+    expect(d.insertMissingGrants).not.toHaveBeenCalled();
+  });
+
+  it("leaves suspended operator memberships untouched", async () => {
+    const d = deps({ status: "suspended" });
+    await syncOidcAgentPermissions(d, { userId: "user-a", roles: [], companyIds: [COMPANY_ID] });
+    expect(d.setPrincipalPermission).not.toHaveBeenCalled();
+  });
+
+  it("syncs each company once", async () => {
+    const d = deps();
+    await syncOidcAgentPermissions(d, {
+      userId: "user-a",
+      roles: ["agent-creator"],
+      companyIds: [COMPANY_ID, OTHER_COMPANY_ID, COMPANY_ID],
+    });
+    expect(d.listPrincipalGrants).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("oidcSkipsHumanGrant", () => {
+  const ssoUsers = new Set(["sso-user"]);
+
+  it("skips only the two synced permissions of SSO operators", () => {
+    const operator = { companyId: COMPANY_ID, principalId: "sso-user", membershipRole: "operator" };
+    expect(oidcSkipsHumanGrant(ssoUsers, operator, "agents:create")).toBe(true);
+    expect(oidcSkipsHumanGrant(ssoUsers, operator, "agents:configure")).toBe(true);
+    expect(oidcSkipsHumanGrant(ssoUsers, operator, "tasks:assign")).toBe(false);
+  });
+
+  it("keeps default grants for admins and for users without a Keycloak account", () => {
+    expect(
+      oidcSkipsHumanGrant(ssoUsers, { companyId: COMPANY_ID, principalId: "sso-user", membershipRole: "admin" }, "agents:create"),
+    ).toBe(false);
+    expect(
+      oidcSkipsHumanGrant(ssoUsers, { companyId: COMPANY_ID, principalId: "local-user", membershipRole: "operator" }, "agents:create"),
+    ).toBe(false);
   });
 });

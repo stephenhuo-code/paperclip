@@ -58,6 +58,22 @@ check "client enforces PKCE S256" "$(KC get "clients/$CID" -r dw --fields 'attri
 check "organization scope is available to the client" \
   "$(KC get "clients/$CID/optional-client-scopes" -r dw --fields name --format csv --noquotes | grep -c '^organization$')" "1"
 
+# specs/002-agent-governance: agent-creator role and the paperclip_roles ID-token claim.
+mapper_id() {
+  KC get "clients/$CID/protocol-mappers/models" -r dw --fields id,name --format csv --noquotes | while IFS=, read -r id name; do
+    if [ "$name" = paperclip-roles ]; then echo "$id"; fi
+  done
+}
+mapper_config() { KC get "clients/$CID/protocol-mappers/models/$(mapper_id)" -r dw --fields "config($1)" --format csv --noquotes; }
+check "client role agent-creator exists" "$(KC get "clients/$CID/roles" -r dw --fields name --format csv --noquotes | grep -c '^agent-creator$')" "1"
+check "paperclip_roles mapper exists" "$(mapper_id | wc -l | tr -d ' ')" "1"
+check "mapper type is client role" "$(KC get "clients/$CID/protocol-mappers/models/$(mapper_id)" -r dw --fields protocolMapper --format csv --noquotes)" "oidc-usermodel-client-role-mapper"
+check "mapper claim name" "$(mapper_config claim.name)" "paperclip_roles"
+check "mapper reads paperclip client roles" "$(mapper_config usermodel.clientRoleMapping.clientId)" "paperclip"
+check "mapper is multivalued" "$(mapper_config multivalued)" "true"
+check "mapper adds the claim to the ID token" "$(mapper_config id.token.claim)" "true"
+check "mapper keeps the claim out of the access token" "$(mapper_config access.token.claim)" "false"
+
 # Manual changes between deploys.
 ORG=$(KC get organizations -r dw --fields id --format csv --noquotes)
 KC create users -r dw -s username=manual-user -s email=manual@example.cn -s enabled=true >/dev/null
@@ -66,6 +82,8 @@ KC create "organizations/$ORG/members" -r dw -b "\"$UID_MANUAL\"" >/dev/null
 KC update realms/dw -s registrationAllowed=true >/dev/null
 KC update "clients/$CID" -r dw -s 'redirectUris=["https://evil.example/cb"]' >/dev/null
 KC update realms/dw -s displayName="Acme Workforce" >/dev/null
+KC add-roles -r dw --uusername manual-user --cclientid paperclip --rolename agent-creator >/dev/null
+KC update "clients/$CID/protocol-mappers/models/$(mapper_id)" -r dw -s 'config."id.token.claim"=false' >/dev/null
 
 provision >/tmp/kc-provision-2.log 2>&1
 check "second provisioning succeeds" "$?" "0"
@@ -76,6 +94,10 @@ check "manually created user is kept" "$(KC get users -r dw -q username=manual-u
 check "manual organization membership is kept" "$(KC get "organizations/$ORG/members" -r dw --fields username --format csv --noquotes)" "manual-user"
 check "owned field registrationAllowed is restored" "$(KC get realms/dw --fields registrationAllowed --format csv --noquotes)" "false"
 check "owned field redirectUris is restored" "$(KC get "clients/$CID" -r dw --fields redirectUris --format csv --noquotes)" "https://agents.example.cn/api/auth/callback/keycloak"
+check "still exactly one agent-creator role" "$(KC get "clients/$CID/roles" -r dw --fields name --format csv --noquotes | grep -c '^agent-creator$')" "1"
+check "still exactly one paperclip_roles mapper" "$(mapper_id | wc -l | tr -d ' ')" "1"
+check "assigned agent-creator role is kept" "$(KC get-roles -r dw --uusername manual-user --cclientid paperclip --fields name --format csv --noquotes)" "agent-creator"
+check "owned mapper setting id.token.claim is restored" "$(mapper_config id.token.claim)" "true"
 check "unmanaged realm setting is left alone" "$(KC get realms/dw --fields displayName --format csv --noquotes)" "Acme Workforce"
 
 exit "$FAILED"

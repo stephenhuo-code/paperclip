@@ -31,6 +31,7 @@ const mockSecretService = vi.hoisted(() => ({
 const mockLogActivity = vi.hoisted(() => vi.fn());
 const mockAccessService = vi.hoisted(() => ({
   decide: vi.fn(),
+  getMembership: vi.fn(async () => ({ membershipRole: "owner", status: "active" })),
 }));
 
 function registerModuleMocks() {

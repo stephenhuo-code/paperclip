@@ -975,6 +975,7 @@ export function agentService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
             adapterConfig,
             permissions: normalizedPermissions,
             runtimeConfig,
+            createdByUserId: options?.createdByUserId ?? null,
           })
           .returning()
           .then((rows) => rows[0]);

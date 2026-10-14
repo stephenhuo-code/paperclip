@@ -2,6 +2,7 @@
 // Usage: node e2e.mjs setup   -> break-glass admin, claim, company, fail-closed check
 //        node e2e.mjs verify <companyId>
 //        node e2e.mjs signup-disabled   (server started with PAPERCLIP_AUTH_DISABLE_SIGN_UP=true)
+//        node e2e.mjs after-restart     (after verify and a server restart)
 import { execFileSync } from "node:child_process";
 
 // Defaults target the standalone setup in run-all.sh; stack-smoke.sh overrides
@@ -195,6 +196,8 @@ async function verify(companyId) {
   const grants = sql(`select count(*) from principal_permission_grants where company_id='${companyId}' and principal_id='${userA}'`);
   check("SSO join wrote the default operator grants", Number(grants) > 0, `${grants} grants`);
 
+  await agentGovernance(companyId, { a, b, userA, userB });
+
   const companiesA = await a.json("/api/companies");
   check("user A sees the company through the API", Array.isArray(companiesA.data) && companiesA.data.some((c) => c.id === companyId));
 
@@ -287,6 +290,76 @@ async function verify(companyId) {
   check("break-glass admin still signs in with a password", adminLogin.status === 200, `status ${adminLogin.status}`);
 }
 
+function grantKeys(companyId, userId) {
+  return sql(
+    `select permission_key from principal_permission_grants where company_id='${companyId}' and principal_id='${userId}' and permission_key in ('agents:create','agents:configure') order by 1`,
+  ).split("\n").filter(Boolean).join(",");
+}
+
+const E2E_AGENT = { role: "engineer", adapterType: "process", adapterConfig: { command: "echo e2e" } };
+
+/** specs/002-agent-governance: Keycloak decides who creates agents; only admins change agents and decide hires. */
+async function agentGovernance(companyId, { a, b, userA, userB }) {
+  check("A (agent-creator) keeps agents:create and loses agents:configure", grantKeys(companyId, userA) === "agents:create", grantKeys(companyId, userA));
+  check("B (no role) has neither agent permission", grantKeys(companyId, userB) === "", grantKeys(companyId, userB));
+  const syncedLogs = sql(`select count(*) from activity_log where company_id='${companyId}' and action='company_membership.sso_permissions_synced'`);
+  check("permission changes are written to the activity log", syncedLogs === "2", syncedLogs);
+
+  const createdA = await a.json(`/api/companies/${companyId}/agents`, "POST", { name: "E2E Builder", ...E2E_AGENT });
+  check("A can create an agent", createdA.status === 201, `status ${createdA.status} ${JSON.stringify(createdA.data).slice(0, 160)}`);
+  const createdB = await b.json(`/api/companies/${companyId}/agents`, "POST", { name: "E2E Blocked", ...E2E_AGENT });
+  check("B cannot create an agent", createdB.status === 403, `status ${createdB.status}`);
+
+  const agentId = createdA.data?.id;
+  const createdBy = sql(`select coalesce(created_by_user_id, '') from agents where id='${agentId}'`);
+  check("the agent records A as its creator", createdBy === userA, createdBy);
+  const editA = await a.json(`/api/agents/${agentId}`, "PATCH", { title: "Edited by A" });
+  check("A can change the agent A created (US3)", editA.status === 200, `status ${editA.status}`);
+  const editB = await b.json(`/api/agents/${agentId}`, "PATCH", { title: "Edited by B" });
+  check("B cannot change the agent configuration", editB.status === 403, `status ${editB.status}`);
+
+  const admin = new Browser();
+  await admin.json("/api/auth/sign-in/email", "POST", { email: "admin@example.cn", password: "BreakGlass#2026" });
+  const editAdmin = await admin.json(`/api/agents/${agentId}`, "PATCH", { title: "Edited by admin" });
+  check("the admin can change the agent configuration", editAdmin.status === 200, `status ${editAdmin.status}`);
+  const adminAgent = await admin.json(`/api/companies/${companyId}/agents`, "POST", { name: "E2E Admin Agent", ...E2E_AGENT });
+  check("the admin creates an agent", adminAgent.status === 201, `status ${adminAgent.status}`);
+  const editOthers = await a.json(`/api/agents/${adminAgent.data?.id}`, "PATCH", { title: "Edited by A" });
+  check("A cannot change an agent someone else created", editOthers.status === 403, `status ${editOthers.status}`);
+
+  const toggleOn = await admin.json(`/api/companies/${companyId}`, "PATCH", { requireBoardApprovalForNewAgents: true });
+  check("the admin turns on hire approval", toggleOn.status === 200, `status ${toggleOn.status}`);
+  const toggleA = await a.json(`/api/companies/${companyId}`, "PATCH", { requireBoardApprovalForNewAgents: false });
+  check("an operator cannot turn off hire approval", toggleA.status === 403, `status ${toggleA.status}`);
+
+  const hire = await a.json(`/api/companies/${companyId}/agent-hires`, "POST", { name: "E2E Hire", ...E2E_AGENT });
+  check("A submits a hire request", hire.status === 201 && hire.data?.approval?.id, `status ${hire.status}`);
+  const approvalId = hire.data?.approval?.id;
+  const pendingAgentId = hire.data?.agent?.id;
+  const approveA = await a.json(`/api/approvals/${approvalId}/approve`, "POST", {});
+  check("an operator cannot approve the hire", approveA.status === 403, `status ${approveA.status}`);
+  const rejectB = await b.json(`/api/approvals/${approvalId}/reject`, "POST", {});
+  check("an operator cannot reject the hire", rejectB.status === 403, `status ${rejectB.status}`);
+  const terminateA = await a.json(`/api/agents/${pendingAgentId}/terminate`, "POST", {});
+  check("an operator cannot terminate the pending agent", terminateA.status === 403, `status ${terminateA.status}`);
+  const approveAdmin = await admin.json(`/api/approvals/${approvalId}/approve`, "POST", {});
+  check("the admin approves the hire", approveAdmin.status === 200, `status ${approveAdmin.status}`);
+  const hiredStatus = sql(`select status from agents where id='${pendingAgentId}'`);
+  check("the approved agent is active", hiredStatus !== "pending_approval" && hiredStatus !== "terminated", hiredStatus);
+  const editHired = await a.json(`/api/agents/${pendingAgentId}`, "PATCH", { title: "Hired, edited by A" });
+  check("A can change the approved agent A requested (US3)", editHired.status === 200, `status ${editHired.status}`);
+  await admin.json(`/api/companies/${companyId}`, "PATCH", { requireBoardApprovalForNewAgents: false });
+
+  kc("remove-roles", "-r", REALM, "--uusername", "user-a", "--cclientid", "paperclip", "--rolename", "agent-creator");
+  const a2 = new Browser();
+  await ssoLogin(a2, "user-a");
+  check("A loses agents:create after the role is removed and A signs in again", grantKeys(companyId, userA) === "", grantKeys(companyId, userA));
+  const createdA2 = await a2.json(`/api/companies/${companyId}/agents`, "POST", { name: "E2E Blocked A", ...E2E_AGENT });
+  check("A can no longer create an agent", createdA2.status === 403, `status ${createdA2.status}`);
+  const editOwnWithoutRole = await a2.json(`/api/agents/${agentId}`, "PATCH", { title: "Edited without role" });
+  check("without the role A can no longer change the agent A created", editOwnWithoutRole.status === 403, `status ${editOwnWithoutRole.status}`);
+}
+
 /** Run with PAPERCLIP_AUTH_DISABLE_SIGN_UP=true on the server. */
 async function signupDisabled() {
   const stranger = new Browser();
@@ -304,11 +377,22 @@ async function signupDisabled() {
   check("break-glass admin password sign-in still works", adminLogin.status === 200, `status ${adminLogin.status}`);
 }
 
+/**
+ * specs/002-agent-governance FR-003: run after a server restart. The startup
+ * backfill must not hand back the permissions A lost at sign-in.
+ */
+async function afterRestart() {
+  const companyId = sql("select id from companies where name='Acme Digital Workforce' limit 1");
+  const userA = sql("select id from \"user\" where email='a@example.cn'");
+  check("after a restart A still has no agent permissions", grantKeys(companyId, userA) === "", grantKeys(companyId, userA));
+}
+
 const [mode, arg] = process.argv.slice(2);
 try {
   if (mode === "setup") await setup();
   else if (mode === "verify") await verify(arg);
   else if (mode === "signup-disabled") await signupDisabled();
+  else if (mode === "after-restart") await afterRestart();
   else throw new Error("usage: node e2e.mjs setup | verify <companyId>");
 } catch (error) {
   check("e2e script ran without errors", false, error instanceof Error ? error.message : String(error));

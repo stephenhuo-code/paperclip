@@ -58,3 +58,4 @@ node "$HERE/e2e.mjs" verify "$COMPANY_ID"
 echo "== phase 3: email sign-up disabled"
 PAPERCLIP_AUTH_DISABLE_SIGN_UP=true start_server "$MAP"
 node "$HERE/e2e.mjs" signup-disabled
+node "$HERE/e2e.mjs" after-restart

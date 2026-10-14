@@ -14,6 +14,7 @@ import type { Config } from "../config.js";
 import { resolvePaperclipInstanceId } from "../home-paths.js";
 import { accessService } from "../services/access.js";
 import { logActivity } from "../services/activity-log.js";
+import { insertMissingPrincipalGrants } from "../services/principal-access-compatibility.js";
 import { applyOidcAuthOptions } from "./oidc.js";
 import {
   workspaceLoginHandoffPlugin,
@@ -313,6 +314,8 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins:
   }
   applyOidcAuthOptions(authConfig, config, {
     access: accessService(db),
+    insertMissingGrants: (companyId, principalType, principalId, grants, grantedByUserId) =>
+      insertMissingPrincipalGrants(db, { companyId, principalType, principalId, grants, grantedByUserId }),
     logActivity: (input) => logActivity(db, input),
   });
 

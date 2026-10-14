@@ -249,6 +249,17 @@ Behavior:
   default human invite would (`operator` role plus its default grants) and a
   `company_membership.sso_joined` activity entry is written. Existing memberships and roles are
   never changed, so roles managed in Paperclip survive every sign-in.
+- **Agent permissions**: for each mapped company where the user is an active `operator`, every SSO
+  sign-in sets `agents:create` from the `agent-creator` client role (ID-token claim
+  `paperclip_roles`) and removes `agents:configure`, so only owners, admins and an agent's creator
+  (`agents.created_by_user_id`, while they still hold `agents:create`) change agents. Other
+  roles and permissions are untouched; changes write a `company_membership.sso_permissions_synced`
+  activity entry. The startup role-default backfill skips these two permissions for operators with a
+  Keycloak account, so a restart does not restore them.
+- **Agent hire decisions**: approving, rejecting or requesting revision of a `hire_agent` approval,
+  approving or terminating a pending agent, and changing `requireBoardApprovalForNewAgents` require a
+  company owner or admin (or an instance admin / local trusted mode). This applies with or without
+  OIDC.
 - **Profile sync**: name and email are refreshed from Keycloak on every sign-in.
 - **Account linking**: a Keycloak account links to an existing local account with the same email
   only when Keycloak reports the email as verified.

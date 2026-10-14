@@ -70,6 +70,7 @@ import { getHiddenSettings } from "../services/settings-visibility.js";
 import type { StorageService } from "../storage/types.js";
 import { assertBoard, assertCompanyAccess, assertInstanceAdmin, getActorInfo, hasCompanyAccess } from "./authz.js";
 import { COMPANY_IMPORT_ROUTE_PATH } from "./company-import-paths.js";
+import { assertCompanyAdmin } from "../auth/company-admin.js";
 
 // A company import can arrive one of two ways on the import + preview routes:
 //   • application/json — the original inline body `{ source, target, ... }`,
@@ -1259,6 +1260,12 @@ export function companyRoutes(db: Db, storage?: StorageService, options?: Compan
     if (!existingCompany) {
       res.status(404).json({ error: "Company not found" });
       return;
+    }
+    if (
+      body.requireBoardApprovalForNewAgents !== undefined &&
+      body.requireBoardApprovalForNewAgents !== existingCompany.requireBoardApprovalForNewAgents
+    ) {
+      await assertCompanyAdmin(req, access, companyId, "change agent hire approval");
     }
 
     if (req.actor.type !== "agent") {

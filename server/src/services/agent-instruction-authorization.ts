@@ -8,6 +8,7 @@ import {
   type Db,
 } from "@paperclipai/db";
 import { forbidden } from "../errors.js";
+import { canEditOwnAgentById } from "../auth/agent-owner.js";
 import {
   authorizationService,
   authorizationDeniedDetails,
@@ -189,6 +190,7 @@ export async function authorizeInstructionCommit(
       scope: { ...input.scope, consentedChange: true },
     });
   }
+  if (!decision.allowed && (await canEditOwnAgentById(db, bound, target))) return bound;
   if (!decision.allowed)
     throw forbidden(decision.explanation, authorizationDeniedDetails(decision));
   return bound;

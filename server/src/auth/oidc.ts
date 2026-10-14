@@ -7,6 +7,8 @@
 
 import type { BetterAuthOptions, BetterAuthPlugin } from "better-auth";
 import { genericOAuth, keycloak } from "better-auth/plugins/generic-oauth";
+import { eq } from "drizzle-orm";
+import { authAccounts, type Db } from "@paperclipai/db";
 import { grantsForHumanRole } from "../services/company-member-roles.js";
 
 export interface OidcConfig {
@@ -121,6 +123,23 @@ export function extractOrganizations(profile: unknown): string[] {
   return [];
 }
 
+/** Keycloak client role on `paperclip` that lets an operator create agents. See specs/002-agent-governance. */
+export const AGENT_CREATOR_ROLE = "agent-creator";
+
+/** Operator permissions decided by Keycloak at every SSO sign-in instead of the role defaults. */
+const SSO_SYNCED_PERMISSION_KEYS = ["agents:create", "agents:configure"] as const;
+
+/**
+ * Known agent roles from the `paperclip_roles` ID-token claim. A missing or
+ * malformed claim means no roles, so the sign-in still succeeds.
+ */
+export function extractAgentRoles(profile: unknown): string[] {
+  if (!profile || typeof profile !== "object") return [];
+  const claim = (profile as Record<string, unknown>).paperclip_roles;
+  if (!Array.isArray(claim)) return [];
+  return claim.filter((value): value is string => value === AGENT_CREATOR_ROLE);
+}
+
 export interface OidcUserInfoValidationInput {
   user: { email?: string | null };
   source: {
@@ -150,7 +169,11 @@ export function validateOidcUserInfo(
 }
 
 export interface OidcMembershipDeps {
-  getMembership(companyId: string, principalType: "user", principalId: string): Promise<unknown>;
+  getMembership(
+    companyId: string,
+    principalType: "user",
+    principalId: string,
+  ): Promise<{ membershipRole?: string | null; status?: string | null } | null>;
   ensureMembership(
     companyId: string,
     principalType: "user",
@@ -163,6 +186,26 @@ export interface OidcMembershipDeps {
     principalType: "user",
     principalId: string,
     grants: ReturnType<typeof grantsForHumanRole>,
+    grantedByUserId: null,
+  ): Promise<unknown>;
+  listPrincipalGrants(
+    companyId: string,
+    principalType: "user",
+    principalId: string,
+  ): Promise<Array<{ permissionKey: string }>>;
+  setPrincipalPermission(
+    companyId: string,
+    principalType: "user",
+    principalId: string,
+    permissionKey: (typeof SSO_SYNCED_PERMISSION_KEYS)[number],
+    enabled: false,
+    grantedByUserId: null,
+  ): Promise<unknown>;
+  insertMissingGrants(
+    companyId: string,
+    principalType: "user",
+    principalId: string,
+    grants: Array<{ permissionKey: "agents:create"; scope: null }>,
     grantedByUserId: null,
   ): Promise<unknown>;
   logActivity(input: {
@@ -212,6 +255,83 @@ export async function reconcileOidcMemberships(
   return { joinedCompanyIds };
 }
 
+/**
+ * Makes an operator's agent permissions follow Keycloak: `agents:create` only
+ * with the agent-creator role, `agents:configure` never (only owners and
+ * admins change agents). Grants are inserted or deleted one row at a time so
+ * the membership role and every other permission stay as they are. Owners,
+ * admins, viewers and inactive memberships are left alone.
+ */
+export async function syncOidcAgentPermissions(
+  deps: Pick<
+    OidcMembershipDeps,
+    "getMembership" | "listPrincipalGrants" | "setPrincipalPermission" | "insertMissingGrants" | "logActivity"
+  >,
+  input: { userId: string; roles: string[]; companyIds: string[] },
+): Promise<void> {
+  const canCreate = input.roles.includes(AGENT_CREATOR_ROLE);
+  for (const companyId of new Set(input.companyIds)) {
+    const membership = await deps.getMembership(companyId, "user", input.userId);
+    if (membership?.membershipRole !== "operator" || membership.status !== "active") continue;
+
+    const current = new Set(
+      (await deps.listPrincipalGrants(companyId, "user", input.userId)).map((grant) => grant.permissionKey),
+    );
+    const granted: string[] = [];
+    const revoked: string[] = [];
+    if (canCreate && !current.has("agents:create")) {
+      await deps.insertMissingGrants(companyId, "user", input.userId, [{ permissionKey: "agents:create", scope: null }], null);
+      granted.push("agents:create");
+    }
+    for (const key of SSO_SYNCED_PERMISSION_KEYS) {
+      const keep = key === "agents:create" && canCreate;
+      if (keep || !current.has(key)) continue;
+      await deps.setPrincipalPermission(companyId, "user", input.userId, key, false, null);
+      revoked.push(key);
+    }
+    if (granted.length === 0 && revoked.length === 0) continue;
+
+    await deps.logActivity({
+      companyId,
+      actorType: "user",
+      actorId: input.userId,
+      action: "company_membership.sso_permissions_synced",
+      entityType: "user",
+      entityId: input.userId,
+      details: { providerId: OIDC_PROVIDER_ID, granted, revoked },
+    });
+  }
+}
+
+/**
+ * Whether the startup backfill must skip a default grant: the two synced
+ * permissions of operators who sign in through Keycloak. Without this, every
+ * restart would hand back what the last SSO sign-in revoked.
+ */
+export function oidcSkipsHumanGrant(
+  ssoUserIds: ReadonlySet<string>,
+  membership: { principalId: string; membershipRole: string | null },
+  permissionKey: string,
+): boolean {
+  return (
+    ssoUserIds.has(membership.principalId) &&
+    membership.membershipRole === "operator" &&
+    (SSO_SYNCED_PERMISSION_KEYS as readonly string[]).includes(permissionKey)
+  );
+}
+
+/** Loads the Keycloak users once and returns the backfill skip predicate. */
+export async function oidcSkipHumanGrant(
+  db: Db,
+): Promise<(membership: { principalId: string; membershipRole: string | null }, permissionKey: string) => boolean> {
+  const rows = await db
+    .select({ userId: authAccounts.userId })
+    .from(authAccounts)
+    .where(eq(authAccounts.providerId, OIDC_PROVIDER_ID));
+  const ssoUserIds = new Set(rows.map((row) => row.userId));
+  return (membership, permissionKey) => oidcSkipsHumanGrant(ssoUserIds, membership, permissionKey);
+}
+
 export interface OidcAuthOptions {
   plugins: BetterAuthPlugin[];
   options: Pick<BetterAuthOptions, "user" | "databaseHooks" | "session" | "account">;
@@ -241,10 +361,15 @@ export function buildOidcAuthOptions(
   const oidc = config.authOidc;
   if (!oidc) return { plugins: [], options: sessionOptions };
 
-  const pendingOrganizationsByEmail = new Map<string, string[]>();
+  const pendingSignInByEmail = new Map<string, { organizations: string[]; roles: string[] }>();
 
-  const join = (userId: string, organizations: string[]) =>
-    reconcileOidcMemberships(deps, { userId, organizations, orgCompanyMap: oidc.orgCompanyMap });
+  const join = async (userId: string, organizations: string[], roles: string[]) => {
+    await reconcileOidcMemberships(deps, { userId, organizations, orgCompanyMap: oidc.orgCompanyMap });
+    const companyIds = organizations
+      .filter((organization) => Object.hasOwn(oidc.orgCompanyMap, organization))
+      .map((organization) => oidc.orgCompanyMap[organization]!);
+    await syncOidcAgentPermissions(deps, { userId, roles, companyIds });
+  };
 
   const provider = {
     ...keycloak({
@@ -278,11 +403,12 @@ export function buildOidcAuthOptions(
           if (source.method !== "oauth" || source.oauth?.providerId !== OIDC_PROVIDER_ID) return;
 
           const organizations = extractOrganizations(source.oauth.profile);
+          const roles = extractAgentRoles(source.oauth.profile);
           const userId = typeof user.id === "string" ? user.id : undefined;
           if (userId) {
-            await join(userId, organizations);
+            await join(userId, organizations, roles);
           } else if (typeof user.email === "string") {
-            pendingOrganizationsByEmail.set(user.email.toLowerCase(), organizations);
+            pendingSignInByEmail.set(user.email.toLowerCase(), { organizations, roles });
           }
         },
       },
@@ -291,10 +417,10 @@ export function buildOidcAuthOptions(
           create: {
             after: async (user) => {
               const email = user.email?.toLowerCase();
-              const organizations = email ? pendingOrganizationsByEmail.get(email) : undefined;
-              if (!email || !organizations) return;
-              pendingOrganizationsByEmail.delete(email);
-              await join(user.id, organizations);
+              const pending = email ? pendingSignInByEmail.get(email) : undefined;
+              if (!email || !pending) return;
+              pendingSignInByEmail.delete(email);
+              await join(user.id, pending.organizations, pending.roles);
             },
           },
         },
@@ -304,7 +430,11 @@ export function buildOidcAuthOptions(
 }
 
 interface OidcAccessDeps {
-  access: Pick<OidcMembershipDeps, "getMembership" | "ensureMembership" | "setPrincipalGrants">;
+  access: Pick<
+    OidcMembershipDeps,
+    "getMembership" | "ensureMembership" | "setPrincipalGrants" | "listPrincipalGrants" | "setPrincipalPermission"
+  >;
+  insertMissingGrants: OidcMembershipDeps["insertMissingGrants"];
   logActivity: OidcMembershipDeps["logActivity"];
 }
 
@@ -323,6 +453,9 @@ export function applyOidcAuthOptions(
     getMembership: (...args) => deps.access.getMembership(...args),
     ensureMembership: (...args) => deps.access.ensureMembership(...args),
     setPrincipalGrants: (...args) => deps.access.setPrincipalGrants(...args),
+    listPrincipalGrants: (...args) => deps.access.listPrincipalGrants(...args),
+    setPrincipalPermission: (...args) => deps.access.setPrincipalPermission(...args),
+    insertMissingGrants: (...args) => deps.insertMissingGrants(...args),
     logActivity: (input) => deps.logActivity(input),
   });
   if (options.session) {

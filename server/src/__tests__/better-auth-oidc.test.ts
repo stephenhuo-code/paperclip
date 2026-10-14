@@ -16,8 +16,18 @@ function deps() {
     getMembership: vi.fn(async () => null),
     ensureMembership: vi.fn(async () => ({})),
     setPrincipalGrants: vi.fn(async () => undefined),
+    listPrincipalGrants: vi.fn(async () => []),
+    setPrincipalPermission: vi.fn(async () => undefined),
+    insertMissingGrants: vi.fn(async () => 0),
     logActivity: vi.fn(async () => ({})),
   };
+}
+
+function operatorDeps(keys: string[]) {
+  const d = deps();
+  d.getMembership.mockImplementation(async () => ({ membershipRole: "operator", status: "active" }) as never);
+  d.listPrincipalGrants.mockImplementation(async () => keys.map((permissionKey) => ({ permissionKey })) as never);
+  return d;
 }
 
 type ProviderConfig = Record<string, unknown> & {
@@ -30,8 +40,10 @@ function keycloakProvider(result: ReturnType<typeof buildOidcAuthOptions>): Prov
   return plugin.options.config[0]!;
 }
 
-function oauthSource(action: string, organization: unknown = ["acme"]) {
-  return { action, method: "oauth", oauth: { providerId: "keycloak", profile: { organization } } };
+function oauthSource(action: string, organization: unknown = ["acme"], roles?: unknown) {
+  const profile: Record<string, unknown> = { organization };
+  if (roles !== undefined) profile.paperclip_roles = roles;
+  return { action, method: "oauth", oauth: { providerId: "keycloak", profile } };
 }
 
 describe("buildOidcAuthOptions", () => {
@@ -110,6 +122,44 @@ describe("buildOidcAuthOptions", () => {
     expect(d.ensureMembership).not.toHaveBeenCalled();
   });
 
+  it("syncs agent permissions from the token roles for an existing user", async () => {
+    const d = operatorDeps(["agents:create", "agents:configure"]);
+    const { options } = buildOidcAuthOptions({ authOidc: OIDC, authSessionTtlSeconds: undefined }, d);
+
+    await options.user!.validateUserInfo!(
+      { user: { id: "user-b", email: "b@example.cn" }, source: oauthSource("sign-in", ["acme"]) } as never,
+      {} as never,
+    );
+
+    expect(d.setPrincipalPermission).toHaveBeenCalledWith(COMPANY_ID, "user", "user-b", "agents:create", false, null);
+    expect(d.setPrincipalPermission).toHaveBeenCalledWith(COMPANY_ID, "user", "user-b", "agents:configure", false, null);
+  });
+
+  it("syncs agent permissions for a new user after the company join", async () => {
+    const d = deps();
+    let joined = false;
+    d.ensureMembership.mockImplementation(async () => {
+      joined = true;
+      return {};
+    });
+    d.getMembership.mockImplementation(async () =>
+      (joined ? { membershipRole: "operator", status: "active" } : null) as never,
+    );
+    d.listPrincipalGrants.mockImplementation(async () =>
+      [{ permissionKey: "agents:create" }, { permissionKey: "agents:configure" }] as never,
+    );
+    const { options } = buildOidcAuthOptions({ authOidc: OIDC, authSessionTtlSeconds: undefined }, d);
+
+    await options.user!.validateUserInfo!(
+      { user: { email: "new@example.cn" }, source: oauthSource("create-user", ["acme"], ["agent-creator"]) } as never,
+      {} as never,
+    );
+    await options.databaseHooks!.user!.create!.after!({ id: "user-new", email: "new@example.cn" } as never, null);
+
+    expect(d.setPrincipalPermission).toHaveBeenCalledTimes(1);
+    expect(d.setPrincipalPermission).toHaveBeenCalledWith(COMPANY_ID, "user", "user-new", "agents:configure", false, null);
+  });
+
   it("does not join anything for a rejected login", async () => {
     const d = deps();
     const { options } = buildOidcAuthOptions({ authOidc: OIDC, authSessionTtlSeconds: undefined }, d);
@@ -140,7 +190,10 @@ describe("applyOidcAuthOptions", () => {
         getMembership: vi.fn(async () => null),
         ensureMembership: vi.fn(async () => ({})),
         setPrincipalGrants: vi.fn(async () => undefined),
+        listPrincipalGrants: vi.fn(async () => []),
+        setPrincipalPermission: vi.fn(async () => undefined),
       },
+      insertMissingGrants: vi.fn(async () => 0),
       logActivity: vi.fn(async () => ({})),
     };
   }
@@ -213,7 +266,10 @@ describe("session lifetime and account linking", () => {
         getMembership: vi.fn(async () => null),
         ensureMembership: vi.fn(async () => ({})),
         setPrincipalGrants: vi.fn(async () => undefined),
+        listPrincipalGrants: vi.fn(async () => []),
+        setPrincipalPermission: vi.fn(async () => undefined),
       },
+      insertMissingGrants: vi.fn(async () => 0),
       logActivity: vi.fn(async () => ({})),
     });
     expect(authConfig).toEqual({ secret: "s", session: { expiresIn: 86400 } });

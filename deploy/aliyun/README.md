@@ -125,6 +125,7 @@ ACR_USERNAME=<ACR 用户名> ACR_PASSWORD=<ACR 密码> ./scripts/bootstrap.sh pr
 - **新增员工**：在 realm 中创建用户，**勾选"邮箱已验证"**，设置初始密码，再在 **Organizations → <组织> → Members** 中把用户加入组织。用户第一次登录 Paperclip 时自动建号并加入公司，无需在 Paperclip 中邀请。
 - **员工离职**：在 Keycloak 中停用用户或将其移出组织。下次登录即被拒绝；已有会话最长 24 小时内失效（SC-004）。
 - **管理员角色**在 Paperclip 中设置（公司设置 → 成员），登录不会覆盖（FR-006）。
+- **谁能新建 agent**：在 **Clients → paperclip → Roles** 中有角色 `agent-creator`（部署自动创建）。在用户的 **Role mapping → Assign role → Client roles** 中分配给员工，这名普通员工（operator）就能新建 agent、在开启审批时提交新建申请；没有这个角色就不能。修改 agent 配置由 Paperclip 的 owner/admin 负责；普通员工每次登录都会被收回修改所有 agent 的权限，但仍有 `agent-creator` 的员工可以修改**自己创建的** agent（不需要审批，审批通过后也能改）。员工**下次企业账号登录时生效**。owner/admin 不受影响（specs/002-agent-governance）。
 - 用户自助注册已关闭（realm 设置由部署管理）。
 
 ## 日常发布与回滚
@@ -133,7 +134,7 @@ ACR_USERNAME=<ACR 用户名> ACR_PASSWORD=<ACR 密码> ./scripts/bootstrap.sh pr
 - **健康检查**：`deploy.sh` 等待 `https://<APP_DOMAIN>/api/health` 返回 `status=ok` 且 `commit` 等于本次提交，同时 Keycloak `/health/ready` 就绪，最长 10 分钟。
 - **自动回滚**：检查失败时自动启动上一个版本，工作流以失败结束（GitHub 会发通知），退出码 2。
 - **手动回滚**：在服务器上执行 `/opt/paperclip/bin/remote-deploy.sh production <上一个 sha>`（见 `/opt/paperclip/state/previous`）。
-- 数据库迁移在 Paperclip 启动时自动执行。
+- 数据库迁移在 Paperclip 启动时自动执行。包含 specs/002 新增的 `agents.created_by_user_id`：升级时自动加列，并从活动日志为已有 agent 补上创建人。
 - `deploy.sh` 发现 `/opt/paperclip/.env` 中有 `ANTHROPIC_` 开头的变量会直接拒绝发布（见[配置数字员工](#配置数字员工)）。
 
 ## 备份与恢复
@@ -150,8 +151,9 @@ ACR_USERNAME=<ACR 用户名> ACR_PASSWORD=<ACR 密码> ./scripts/bootstrap.sh pr
   - realm：启用、`organizationsEnabled`、禁止自助注册、要求验证邮箱、允许邮箱登录、禁止重复邮箱
   - 客户端 `paperclip`：机密客户端、仅标准授权码流程、PKCE S256、client secret、回调地址 `https://<APP_DOMAIN>/api/auth/callback/keycloak`、Web Origin、登出回调
   - 组织：名称、别名、启用、邮箱域名
+  - 客户端角色 `agent-creator`（缺少时创建），映射规则 `paperclip-roles`（把 `paperclip` 客户端角色放进 ID 令牌的 `paperclip_roles`）
 
-  用户、组织成员、其他客户端以及其余所有设置都不受影响。
+  用户、角色分配、组织成员、其他客户端以及其余所有设置都不受影响。
 
 ## 配置数字员工
 
@@ -164,6 +166,8 @@ ACR_USERNAME=<ACR 用户名> ACR_PASSWORD=<ACR 密码> ./scripts/bootstrap.sh pr
 | Kimi | Claude Code（`claude_local`） | `https://api.moonshot.cn/anthropic` | `kimi-k2` 系列 |
 
 > ⚠️ 上表的接口地址和模型名来自各家公开文档，**尚未在生产环境实测**（任务 T021，需要三家的 API Key）。实测后以实测结果为准并更新本表。Kimi 也可以改用原生的 `kimi_local`（Kimi Code CLI），配置 `KIMI_MODEL_NAME` 与 `KIMI_MODEL_API_KEY`。
+
+**新建审批**：owner/admin 在 **公司设置** 打开"新建 agent 需要审批"后，有 `agent-creator` 的员工新建时会提交申请，由 owner/admin 在 **审批（Approvals）** 页面批准或驳回。只有 owner/admin 能处理这些申请（包括终止待审批的 agent），也只有他们能改这个开关。
 
 ### 创建一个数字员工
 

@@ -75,6 +75,9 @@ export async function ensureHumanRoleDefaultGrants(
 
 export async function backfillPrincipalAccessCompatibility(
   db: Db,
+  options: {
+    skipHumanGrant?: (membership: { principalId: string; membershipRole: string | null }, permissionKey: string) => boolean;
+  } = {},
 ): Promise<PrincipalAccessCompatibilityBackfillStats> {
   const now = new Date();
   const nonTerminalAgents = await db
@@ -126,6 +129,18 @@ export async function backfillPrincipalAccessCompatibility(
 
   let humanGrantsInserted = 0;
   for (const membership of activeHumanMemberships) {
+    const skipHumanGrant = options.skipHumanGrant;
+    if (skipHumanGrant) {
+      humanGrantsInserted += await insertMissingPrincipalGrants(db, {
+        companyId: membership.companyId,
+        principalType: "user",
+        principalId: membership.principalId,
+        grants: grantsForHumanRole(normalizeHumanRole(membership.membershipRole, "operator"))
+          .filter((grant) => !skipHumanGrant(membership, grant.permissionKey)),
+        grantedByUserId: null,
+      });
+      continue;
+    }
     humanGrantsInserted += await ensureHumanRoleDefaultGrants(db, {
       companyId: membership.companyId,
       principalId: membership.principalId,

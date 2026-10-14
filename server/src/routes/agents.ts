@@ -275,6 +275,8 @@ import {
 } from "../services/native-runtime/provider-profile.js";
 import { managedAgentProfileService } from "../services/managed-agent-profiles.js";
 import { remoteAgentProfileService } from "../services/remote-agent-profiles.js";
+import { assertCompanyAdmin } from "../auth/company-admin.js";
+import { canEditOwnAgent } from "../auth/agent-owner.js";
 
 const AGENT_SKILL_ASSIGNMENT_MODES = ["add", "remove", "replace"] as const;
 
@@ -2178,6 +2180,7 @@ export function agentRoutes(
       resource: { type: "agent", companyId: targetAgent.companyId, agentId: targetAgent.id },
     });
     if (decision.allowed) return;
+    if (await canEditOwnAgent(req, access, targetAgent)) return;
     throw forbidden(decision.explanation, authorizationDeniedDetails(decision));
   }
 
@@ -2858,6 +2861,7 @@ export function agentRoutes(
     if (decision.allowed) {
       return;
     }
+    if (await canEditOwnAgent(req, access, targetAgent)) return;
 
     if (decision.reason === "deny_missing_consent" && req.actor.type === "agent" && targetKeys.length > 0) {
       try {
@@ -5964,6 +5968,7 @@ export function agentRoutes(
       res.status(409).json({ error: "Only pending approval agents can be approved" });
       return;
     }
+    await assertCompanyAdmin(req, access, existing.companyId, "decide agent hires");
 
     // Resolve the linked hire approval (clears it from the inbox) and run the
     // shared approval side effects: agent activation, budget policy, and the
@@ -6023,6 +6028,7 @@ export function agentRoutes(
     // reject() already calls agentsSvc.terminate() internally.
     let agent: Awaited<ReturnType<typeof svc.terminate>> = null;
     if (existing.status === "pending_approval") {
+      await assertCompanyAdmin(req, access, existing.companyId, "decide agent hires");
       const openApproval = await approvalsSvc.findOpenHireApprovalForAgent(existing.companyId, id);
       if (openApproval) {
         await approvalsSvc.reject(openApproval.id, req.actor.userId ?? "board");

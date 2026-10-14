@@ -24,6 +24,7 @@ import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 import { issueService } from "../services/issues.js";
 import { approvalReadSqlCondition, canActorReadApproval } from "../services/authorization.js";
 import { REVIEW_PATH_RECOVERY_INSTRUCTION } from "../services/recovery/review-path-recovery.js";
+import { assertCompanyAdmin } from "../auth/company-admin.js";
 
 function redactApprovalPayload<T extends { payload: Record<string, unknown> }>(approval: T): T {
   return {
@@ -300,6 +301,8 @@ export function approvalRoutes(
       res.status(404).json({ error: "Approval not found" });
       return;
     }
+    const hireApproval = await svc.getById(id);
+    if (hireApproval?.type === "hire_agent") await assertCompanyAdmin(req, access, hireApproval.companyId, "decide agent hires");
     const decidedByUserId = req.actor.userId ?? "board";
     const { approval, applied } = await svc.approve(id, decidedByUserId, req.body.decisionNote);
 
@@ -416,6 +419,8 @@ export function approvalRoutes(
       res.status(404).json({ error: "Approval not found" });
       return;
     }
+    const hireApproval = await svc.getById(id);
+    if (hireApproval?.type === "hire_agent") await assertCompanyAdmin(req, access, hireApproval.companyId, "decide agent hires");
     const decidedByUserId = req.actor.userId ?? "board";
     const { approval, applied } = await svc.reject(id, decidedByUserId, req.body.decisionNote);
 
@@ -454,6 +459,8 @@ export function approvalRoutes(
         res.status(404).json({ error: "Approval not found" });
         return;
       }
+      const hireApproval = await svc.getById(id);
+      if (hireApproval?.type === "hire_agent") await assertCompanyAdmin(req, access, hireApproval.companyId, "decide agent hires");
       const decidedByUserId = req.actor.userId ?? "board";
       const approval = await svc.requestRevision(id, decidedByUserId, req.body.decisionNote);
 
