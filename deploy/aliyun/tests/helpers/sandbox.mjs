@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const DEPLOY_SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+export const PRODUCTION_ENV_FIXTURE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures/production.env");
 
 const FAKE = String.raw`#!/usr/bin/env bash
 # Fake external command. Logs the call, then answers from FAKE_* variables.
@@ -77,6 +78,8 @@ export function createSandbox() {
     recursive: true,
     filter: (src) => !src.includes(`${path.sep}tests${path.sep}`) && !src.endsWith(`${path.sep}tests`),
   });
+  // Tests run against fixed example settings, not the live production values.
+  fs.copyFileSync(PRODUCTION_ENV_FIXTURE, path.join(root, "deploy", "environments", "production.env"));
   for (const name of FAKE_COMMANDS) {
     fs.writeFileSync(path.join(bin, name), FAKE, { mode: 0o755 });
   }

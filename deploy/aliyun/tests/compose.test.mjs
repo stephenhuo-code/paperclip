@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { DEPLOY_SRC, sampleEnv } from "./helpers/sandbox.mjs";
+import { DEPLOY_SRC, PRODUCTION_ENV_FIXTURE, sampleEnv } from "./helpers/sandbox.mjs";
 
 // Contract: specs/001-keycloak-sso-aliyun/contracts/deployment.md §3 and §5.
 const REQUIRED_PAPERCLIP_ENV = [
@@ -47,7 +47,7 @@ describe("docker-compose.yml", () => {
         "compose",
         "--project-directory", DEPLOY_SRC,
         "-f", path.join(DEPLOY_SRC, "docker-compose.yml"),
-        "--env-file", path.join(DEPLOY_SRC, "environments", "production.env"),
+        "--env-file", PRODUCTION_ENV_FIXTURE,
         "--env-file", secrets,
         "--profile", "provision",
         "config", "--format", "json",
