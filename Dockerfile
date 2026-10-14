@@ -152,8 +152,12 @@ RUN rm -rf packages/paperclip-runner/runner/target
 FROM build AS runner-provider-pack
 # Unstamped local builds remain usable, but cannot qualify a remote pack.
 # Never invent a source revision to make an unqualified pack look verified.
+# Deployments without runner remote sandboxes can skip the pack (~1.5 GB).
+ARG PAPERCLIP_SKIP_PROVIDER_PACK=""
 RUN mkdir -p /provider-pack \
-  && if [ -n "${PAPERCLIP_BUILD_COMMIT}" ]; then \
+  && if [ "${PAPERCLIP_SKIP_PROVIDER_PACK}" = "true" ]; then \
+    echo "Skipping remote provider pack: PAPERCLIP_SKIP_PROVIDER_PACK=true"; \
+  elif [ -n "${PAPERCLIP_BUILD_COMMIT}" ]; then \
     PAPERCLIP_RUNNER_SOURCE_REVISION="${PAPERCLIP_BUILD_COMMIT}" node packages/paperclip-runner/scripts/build-provider-pack.mjs /provider-pack; \
   else \
     echo "Skipping remote provider pack: supply a full PAPERCLIP_BUILD_COMMIT to enable remote OpenCode/ACPX execution"; \
@@ -166,13 +170,16 @@ ARG USER_GID=1000
 # the @latest CLI tools advance weekly). Without it the cached layer would
 # freeze the tools until an unrelated cache bust.
 ARG CLI_TOOLS_CACHE_EPOCH=""
+# Global agent CLIs; deployments can install a subset.
+ARG CLI_TOOLS="@anthropic-ai/claude-code@latest @openai/codex@latest opencode-ai @google/gemini-cli@latest @moonshot-ai/kimi-code@latest"
 WORKDIR /app
 # Tool and OS layer BEFORE the app copy: it references nothing from /app, and
 # the app copy changes on every commit — ordered the other way around, this
 # (the single most expensive layer: four CLI toolchains + apt, per arch) can
 # never hit the layer cache and rebuilds on every build.
 RUN echo "cli-tools-epoch: ${CLI_TOOLS_CACHE_EPOCH}" \
-  && npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/codex@latest opencode-ai @google/gemini-cli@latest @moonshot-ai/kimi-code@latest \
+  && npm install --global --omit=dev ${CLI_TOOLS} \
+  && npm cache clean --force \
   && apt-get update \
   && apt-get install -y --no-install-recommends openssh-client jq \
   && rm -rf /var/lib/apt/lists/* \

@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createSandbox, sampleEnv, SECRET_VALUES } from "./helpers/sandbox.mjs";
 
-const today = new Date().toISOString().slice(0, 10);
+// backup.sh names the folder with `date +%F`, which uses the local time zone.
+const now = new Date();
+const today = [now.getFullYear(), now.getMonth() + 1, now.getDate()]
+  .map((part, index) => String(part).padStart(index === 0 ? 4 : 2, "0"))
+  .join("-");
 const indexOf = (calls, pattern) => calls.findIndex((call) => pattern.test(call));
 
 describe("backup.sh", () => {

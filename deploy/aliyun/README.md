@@ -196,6 +196,10 @@ ACR_USERNAME=<ACR 用户名> ACR_PASSWORD=<ACR 密码> ./scripts/bootstrap.sh pr
 
 把某个数字员工从一家模型换到另一家后，旧的会话可能无法续接，在 agent 页面重置会话即可。
 
+### 预装的 agent CLI
+
+生产镜像只预装 Claude Code、Codex、Kimi Code，并且不包含 Paperclip runner 的远程沙箱工具包（provider pack），镜像约小 2.4 GB。OpenCode、Gemini 类 agent 和 runner 远程沙箱因此不可用；需要时去掉 `.github/workflows/deploy-aliyun.yml` 中的 `CLI_TOOLS`、`PAPERCLIP_SKIP_PROVIDER_PACK` 两个构建参数。原因见 [ADR 0001](docs/adr/0001-slim-production-image.md)。
+
 ### 运行隔离
 
 三类数字员工都作为 Paperclip 容器里的子进程运行，各有独立的工作区 `/paperclip/workspaces/<agentId>`，但**文件系统不隔离**（research.md R16）。`claude_local` 自带的 bubblewrap 文件沙箱实测可用，但需要派生镜像并放宽容器的两项安全加固（`seccomp=unconfined`、`systempaths=unconfined`），首期不开启。

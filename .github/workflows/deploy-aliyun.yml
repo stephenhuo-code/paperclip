@@ -61,8 +61,11 @@ jobs:
           provenance: false
           sbom: false
           tags: ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/paperclip:${{ github.sha }}
+          # Slim image, see deploy/aliyun/docs/adr/0001-slim-production-image.md.
           build-args: |
             PAPERCLIP_BUILD_COMMIT=${{ github.sha }}
+            CLI_TOOLS=@anthropic-ai/claude-code@latest @openai/codex@latest @moonshot-ai/kimi-code@latest
+            PAPERCLIP_SKIP_PROVIDER_PACK=true
           cache-from: type=gha
           # mode=min caches only the final image layers; mode=max spent ~17 min uploading every build stage.
           cache-to: type=gha,mode=min
