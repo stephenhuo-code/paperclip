@@ -58,6 +58,9 @@ case "$name" in
         echo "generated-secret-$n" ;;
       s_client) echo "-----BEGIN CERTIFICATE-----" ;;
       x509)
+        # Drain stdin like the real tool; exiting early makes the s_client side
+        # of the pipe die of SIGPIPE under load, which pipefail reports.
+        cat >/dev/null
         case "$args" in *" -checkend "*) exit "${'${FAKE_CERT_EXPIRING:-0}'}" ;; esac ;;
     esac ;;
 esac
@@ -112,6 +115,8 @@ export function createSandbox() {
         encoding: "utf8",
         env: {
           PATH: `${bin}:${process.env.PATH}`,
+          // Scripts and tests must agree on "today" (backup folder names).
+          ...(process.env.TZ ? { TZ: process.env.TZ } : {}),
           HOME: dir,
           PAPERCLIP_ROOT: root,
           FAKE_LOG: log,
