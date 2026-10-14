@@ -56,6 +56,9 @@ jobs:
           target: production
           platforms: linux/amd64
           push: true
+          # ACR personal edition rejects attestation manifests (application/vnd.oci.empty.v1+json).
+          provenance: false
+          sbom: false
           tags: ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/paperclip:${{ github.sha }}
           build-args: |
             PAPERCLIP_BUILD_COMMIT=${{ github.sha }}
@@ -69,6 +72,9 @@ jobs:
           file: deploy/aliyun/Dockerfile.assets
           platforms: linux/amd64
           push: true
+          # ACR personal edition rejects attestation manifests (application/vnd.oci.empty.v1+json).
+          provenance: false
+          sbom: false
           tags: ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/paperclip-deploy:${{ github.sha }}
 
       - name: Mirror base images into ACR
@@ -78,7 +84,11 @@ jobs:
             if docker buildx imagetools inspect "$target" >/dev/null 2>&1; then
               echo "present: $target"
             else
-              docker buildx imagetools create --tag "$target" "$source"
+              # Copy only the linux/amd64 image: ACR personal edition rejects the
+              # attestation manifests that multi-platform indexes carry.
+              docker pull --platform linux/amd64 "$source"
+              docker tag "$source" "$target"
+              docker push "$target"
             fi
           }
           mirror "quay.io/keycloak/keycloak:${KEYCLOAK_VERSION}" "keycloak:${KEYCLOAK_VERSION}"
