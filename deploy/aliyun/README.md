@@ -92,6 +92,8 @@ ACR_USERNAME=<ACR 用户名> ACR_PASSWORD=<ACR 密码> ./scripts/bootstrap.sh pr
 
 首次发布完成后：`https://<APP_DOMAIN>` 是 Paperclip 登录页，`https://<SSO_DOMAIN>` 是 Keycloak，证书由 Caddy 自动申请。
 
+> 面向管理员的操作手册见 [docs/manual.md](docs/manual.md)（开通、添加员工、开通 agent）。
+
 ## 首个管理员与组织映射
 
 首次发布后，在服务器上以 root 运行引导脚本，按提示输入即可（只做一次，可重复运行）：
