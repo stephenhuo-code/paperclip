@@ -77,8 +77,8 @@ check "mapper keeps the claim out of the access token" "$(mapper_config access.t
 
 # Sign-in page branding: realm display name (tab title) and header HTML with the logo.
 check "realm display name is the brand" "$(KC get realms/dw --fields displayName --format csv --noquotes)" "Acme 数字员工平台"
-check "realm header shows the logo and the brand" \
-  "$(KC get realms/dw --fields displayNameHtml | grep -c 'https://agents.example.cn/brand/logo.png.*Acme 数字员工平台')" "1"
+check "realm header shows only the logo" "$(KC get realms/dw --fields displayNameHtml --format csv --noquotes)" \
+  '<img src="https://agents.example.cn/brand/logo.png" alt="Acme 数字员工平台" style="height:64px">'
 
 # Manual changes between deploys.
 ORG=$(KC get organizations -r dw --fields id --format csv --noquotes)

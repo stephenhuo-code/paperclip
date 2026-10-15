@@ -239,7 +239,8 @@ describe("AuthPage enterprise sign-in", () => {
     expect(container.textContent).toContain("使用企业账号登录，访问数字员工平台");
     const logo = container.querySelector("img");
     expect(logo?.getAttribute("src")).toBe("https://agent.example.cn/brand/logo.png");
-    expect(container.textContent).toContain("FiveGuys 数字员工平台");
+    expect(logo?.getAttribute("alt")).toBe("FiveGuys 数字员工平台");
+    expect(logo?.parentElement?.textContent).toBe("");
     expect(container.querySelector("svg[aria-label='Paperclip']")).toBeNull();
     expect(document.title).toBe("FiveGuys 数字员工平台");
     expect(ssoButton()).toBeDefined();
@@ -254,6 +255,7 @@ describe("AuthPage enterprise sign-in", () => {
     const root = await mount();
 
     expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("h1")?.previousElementSibling?.textContent).toBe("FiveGuys 数字员工平台");
     expect(container.querySelector("h1")?.textContent).toBe("登录 FiveGuys 数字员工平台");
     await act(() => root.unmount());
   });

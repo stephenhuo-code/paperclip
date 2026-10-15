@@ -39,11 +39,11 @@ realm_fields=(
   -s enabled=true -s organizationsEnabled=true -s registrationAllowed=false
   -s verifyEmail=true -s loginWithEmailAllowed=true -s duplicateEmailsAllowed=false
 )
-# Sign-in page branding: tab title and page header (with the logo when set).
+# Sign-in page branding: tab title, and a page header showing the logo (or the name).
 if [ -n "${KEYCLOAK_DISPLAY_NAME:-}" ]; then
   display_html="$KEYCLOAK_DISPLAY_NAME"
   if [ -n "${KEYCLOAK_DISPLAY_LOGO_URL:-}" ]; then
-    display_html="<img src=\"$KEYCLOAK_DISPLAY_LOGO_URL\" alt=\"\" style=\"height:48px\"> $KEYCLOAK_DISPLAY_NAME"
+    display_html="<img src=\"$KEYCLOAK_DISPLAY_LOGO_URL\" alt=\"$KEYCLOAK_DISPLAY_NAME\" style=\"height:64px\">"
   fi
   realm_fields+=(-s "displayName=$KEYCLOAK_DISPLAY_NAME" -s "displayNameHtml=$display_html")
 fi

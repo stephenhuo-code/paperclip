@@ -147,11 +147,12 @@ export function AuthPage() {
       <div className="w-full md:w-1/2 flex flex-col overflow-y-auto">
         <div className="w-full max-w-md mx-auto my-auto px-8 py-12">
           <div className="mb-8">
-            {brand ? (
-              <div className="flex items-center gap-2">
-                {brand.logoUrl && <img src={brand.logoUrl} alt="" className="h-8 w-auto" />}
-                <span className="text-base font-semibold">{brand.name}</span>
+            {brand?.logoUrl ? (
+              <div className="flex items-center">
+                <img src={brand.logoUrl} alt={brand.name} className="h-12 w-auto" />
               </div>
+            ) : brand ? (
+              <span className="text-base font-semibold">{brand.name}</span>
             ) : (
               <PaperclipLockup className="h-5 w-auto" />
             )}
