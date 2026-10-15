@@ -6,7 +6,14 @@
 {$APP_DOMAIN} {
 	{$CADDY_TLS_DIRECTIVE}
 	encode zstd gzip
-	reverse_proxy paperclip:3100
+	# Sign-in page logo (deploy/aliyun/branding), also used by the Keycloak page.
+	handle_path /brand/* {
+		root * /srv/brand
+		file_server
+	}
+	handle {
+		reverse_proxy paperclip:3100
+	}
 }
 
 # Keycloak sign-in. The admin console is limited to ADMIN_ALLOWED_CIDRS (FR-027);

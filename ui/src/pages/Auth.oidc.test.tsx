@@ -224,4 +224,45 @@ describe("AuthPage enterprise sign-in", () => {
     expect(container.textContent).toContain("Need an account?");
     await act(() => root.unmount());
   });
+
+  it("shows the configured brand instead of the Paperclip lockup", async () => {
+    healthMock.mockResolvedValue({
+      ...OIDC_HEALTH,
+      auth: {
+        ...OIDC_HEALTH.auth,
+        brand: { name: "FiveGuys 数字员工平台", logoUrl: "https://agent.example.cn/brand/logo.png" },
+      },
+    });
+    const root = await mount();
+
+    expect(container.querySelector("h1")?.textContent).toBe("登录 FiveGuys 数字员工平台");
+    expect(container.textContent).toContain("使用企业账号登录，访问数字员工平台");
+    const logo = container.querySelector("img");
+    expect(logo?.getAttribute("src")).toBe("https://agent.example.cn/brand/logo.png");
+    expect(container.textContent).toContain("FiveGuys 数字员工平台");
+    expect(container.querySelector("svg[aria-label='Paperclip']")).toBeNull();
+    expect(document.title).toBe("FiveGuys 数字员工平台");
+    expect(ssoButton()).toBeDefined();
+    await act(() => root.unmount());
+  });
+
+  it("shows the brand name without a logo when none is configured", async () => {
+    healthMock.mockResolvedValue({
+      ...OIDC_HEALTH,
+      auth: { ...OIDC_HEALTH.auth, brand: { name: "FiveGuys 数字员工平台" } },
+    });
+    const root = await mount();
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("h1")?.textContent).toBe("登录 FiveGuys 数字员工平台");
+    await act(() => root.unmount());
+  });
+
+  it("keeps the Paperclip lockup and title without a brand", async () => {
+    const root = await mount();
+
+    expect(container.querySelector("h1")?.textContent).toBe("Sign in to Paperclip");
+    expect(container.querySelector("svg[aria-label='Paperclip']")).not.toBeNull();
+    await act(() => root.unmount());
+  });
 });

@@ -477,7 +477,10 @@ export function applyOidcAuthOptions(
  */
 export function oidcHealthStatus(
   env: Record<string, string | undefined>,
-): { oidc: { enabled: true; providerId: string; label: string } } | null {
+): {
+  oidc: { enabled: true; providerId: string; label: string };
+  brand?: { name: string; logoUrl?: string };
+} | null {
   let authOidc: OidcConfig | null;
   try {
     authOidc = parseOidcConfig(env).authOidc;
@@ -485,5 +488,14 @@ export function oidcHealthStatus(
     return null;
   }
   if (!authOidc) return null;
-  return { oidc: { enabled: true, providerId: OIDC_PROVIDER_ID, label: authOidc.label } };
+  const status: NonNullable<ReturnType<typeof oidcHealthStatus>> = {
+    oidc: { enabled: true, providerId: OIDC_PROVIDER_ID, label: authOidc.label },
+  };
+  // Sign-in page branding (deploy/aliyun: PAPERCLIP_BRAND_NAME / _LOGO_URL).
+  const brandName = env.PAPERCLIP_BRAND_NAME?.trim();
+  if (brandName) {
+    const logoUrl = env.PAPERCLIP_BRAND_LOGO_URL?.trim();
+    status.brand = logoUrl ? { name: brandName, logoUrl } : { name: brandName };
+  }
+  return status;
 }

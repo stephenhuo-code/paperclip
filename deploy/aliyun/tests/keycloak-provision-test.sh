@@ -27,6 +27,7 @@ provision() {
     -e KEYCLOAK_URL="http://$NAME:8080" -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
     -e KEYCLOAK_REALM=dw -e KEYCLOAK_ORG_NAME=Acme -e KEYCLOAK_ORG_ALIAS=acme -e KEYCLOAK_ORG_DOMAIN=example.cn \
     -e APP_DOMAIN=agents.example.cn -e PAPERCLIP_AUTH_OIDC_CLIENT_SECRET=test-secret \
+    -e "KEYCLOAK_DISPLAY_NAME=Acme 数字员工平台" -e KEYCLOAK_DISPLAY_LOGO_URL=https://agents.example.cn/brand/logo.png \
     -v "$PROVISION:/provision.sh:ro" "$KEYCLOAK_IMAGE" /provision.sh
 }
 
@@ -74,6 +75,11 @@ check "mapper is multivalued" "$(mapper_config multivalued)" "true"
 check "mapper adds the claim to the ID token" "$(mapper_config id.token.claim)" "true"
 check "mapper keeps the claim out of the access token" "$(mapper_config access.token.claim)" "false"
 
+# Sign-in page branding: realm display name (tab title) and header HTML with the logo.
+check "realm display name is the brand" "$(KC get realms/dw --fields displayName --format csv --noquotes)" "Acme 数字员工平台"
+check "realm header shows the logo and the brand" \
+  "$(KC get realms/dw --fields displayNameHtml | grep -c 'https://agents.example.cn/brand/logo.png.*Acme 数字员工平台')" "1"
+
 # Manual changes between deploys.
 ORG=$(KC get organizations -r dw --fields id --format csv --noquotes)
 KC create users -r dw -s username=manual-user -s email=manual@example.cn -s enabled=true >/dev/null
@@ -81,7 +87,8 @@ UID_MANUAL=$(KC get users -r dw -q username=manual-user --fields id --format csv
 KC create "organizations/$ORG/members" -r dw -b "\"$UID_MANUAL\"" >/dev/null
 KC update realms/dw -s registrationAllowed=true >/dev/null
 KC update "clients/$CID" -r dw -s 'redirectUris=["https://evil.example/cb"]' >/dev/null
-KC update realms/dw -s displayName="Acme Workforce" >/dev/null
+KC update realms/dw -s rememberMe=true >/dev/null
+KC update realms/dw -s displayName="Changed by hand" >/dev/null
 KC add-roles -r dw --uusername manual-user --cclientid paperclip --rolename agent-creator >/dev/null
 KC update "clients/$CID/protocol-mappers/models/$(mapper_id)" -r dw -s 'config."id.token.claim"=false' >/dev/null
 
@@ -98,7 +105,8 @@ check "still exactly one agent-creator role" "$(KC get "clients/$CID/roles" -r d
 check "still exactly one paperclip_roles mapper" "$(mapper_id | wc -l | tr -d ' ')" "1"
 check "assigned agent-creator role is kept" "$(KC get-roles -r dw --uusername manual-user --cclientid paperclip --fields name --format csv --noquotes)" "agent-creator"
 check "owned mapper setting id.token.claim is restored" "$(mapper_config id.token.claim)" "true"
-check "unmanaged realm setting is left alone" "$(KC get realms/dw --fields displayName --format csv --noquotes)" "Acme Workforce"
+check "unmanaged realm setting is left alone" "$(KC get realms/dw --fields rememberMe --format csv --noquotes)" "true"
+check "owned field displayName is restored" "$(KC get realms/dw --fields displayName --format csv --noquotes)" "Acme 数字员工平台"
 
 # specs/003-first-run-setup: first-run.sh hands passwords to kcadm on stdin only.
 KC create users -r master -s username=stdin-admin -s enabled=true >/dev/null

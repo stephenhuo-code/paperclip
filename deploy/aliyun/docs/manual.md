@@ -117,3 +117,15 @@ cp -p /opt/paperclip/.env /opt/paperclip/.env.bak-$(date +%F)   # 先备份配�
 - **谁能新建**：owner/admin 随时可以；普通员工需在 Keycloak 分配 `agent-creator` 角色（见 1.1 第 5 步）。
 - **新建审批**：在 **Company Settings → General → Hiring** 打开 "Require board approval for new hires" 后，员工新建 agent 会生成申请，只有 owner/admin 能在 **Approvals** 页面批准或驳回。
 - **谁能修改**：owner/admin 可以修改所有 agent；有 `agent-creator` 的员工只能修改自己创建的 agent，修改不需要审批。
+
+---
+
+### 1.3 修改登录页的平台名称和 logo
+
+Paperclip 登录页和 Keycloak 登录页显示的名称与 logo 由部署配置决定，不在网页中设置：
+
+1. 换 logo：用新图片替换仓库中的 `deploy/aliyun/branding/logo.png`（横版，高度不小于 64px）。
+2. 改名称：修改 `deploy/aliyun/environments/production.env` 中的 `PAPERCLIP_BRAND_NAME`。
+3. 提交并发布。发布后用无痕窗口打开 `https://agent.ai-datum.net` 确认；浏览器可能缓存旧 logo，强制刷新即可。
+
+`PAPERCLIP_BRAND_NAME` 留空时两个登录页恢复 Paperclip 和 Keycloak 的默认样子。

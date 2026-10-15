@@ -52,6 +52,8 @@ export type HealthStatus = {
   /** Enterprise (OIDC) sign-in; absent when it is not configured. */
   auth?: {
     oidc: { enabled: boolean; providerId?: string; label?: string };
+    /** Sign-in page branding; absent when not configured. */
+    brand?: { name: string; logoUrl?: string };
   };
 };
 

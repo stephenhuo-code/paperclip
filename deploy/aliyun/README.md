@@ -164,11 +164,15 @@ ACR_USERNAME=<ACR 用户名> ACR_PASSWORD=<ACR 密码> ./scripts/bootstrap.sh pr
 - **恢复**：`/opt/paperclip/deploy/scripts/restore.sh production <YYYY-MM-DD>`。脚本先下载备份，确认完整后才停服务，恢复两个库和数据卷，再启动并做健康检查。
 - **演练**：每季度在一台临时 ECS 上做一次恢复演练（FR-019a）。
 
+## 登录页名称和 logo
+
+`environments/production.env` 中的 `PAPERCLIP_BRAND_NAME`、`PAPERCLIP_BRAND_LOGO_URL` 决定 Paperclip 和 Keycloak 登录页显示的平台名称和 logo；logo 文件放在 `branding/`，由 Caddy 在 `https://<APP_DOMAIN>/brand/` 下提供（见 `branding/README.md`）。两项都留空时保持 Paperclip 原样。修改后提交并发布即生效。
+
 ## Keycloak 升级与受管配置
 
 - **升级**（FR-028）：修改 `environments/production.env` 中的 `KEYCLOAK_VERSION`，提交并发布。工作流会把新版本同步到 ACR，Keycloak 启动时自动升级自身的数据库结构。升级前确认当天的备份已完成。
 - **受管配置**（FR-025）：`keycloak/provision.sh` 在每次部署时创建或更新下列字段，**在控制台对它们的手工修改会在下次部署时被恢复**：
-  - realm：启用、`organizationsEnabled`、禁止自助注册、要求验证邮箱、允许邮箱登录、禁止重复邮箱
+  - realm：启用、`organizationsEnabled`、禁止自助注册、要求验证邮箱、允许邮箱登录、禁止重复邮箱；设置了 `PAPERCLIP_BRAND_NAME` 时还有显示名称和页头（含 logo）
   - 客户端 `paperclip`：机密客户端、仅标准授权码流程、PKCE S256、client secret、回调地址 `https://<APP_DOMAIN>/api/auth/callback/keycloak`、Web Origin、登出回调
   - 组织：名称、别名、启用、邮箱域名
   - 客户端角色 `agent-creator`（缺少时创建），映射规则 `paperclip-roles`（把 `paperclip` 客户端角色放进 ID 令牌的 `paperclip_roles`）

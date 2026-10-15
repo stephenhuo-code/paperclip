@@ -138,6 +138,26 @@ describe("docker-compose.yml", () => {
     }
   });
 
+  it("brands the Paperclip and Keycloak sign-in pages", () => {
+    const paperclip = config.services.paperclip.environment;
+    assert.equal(paperclip.PAPERCLIP_BRAND_NAME, "Acme 数字员工平台");
+    assert.equal(paperclip.PAPERCLIP_BRAND_LOGO_URL, "https://agents.example.cn/brand/logo.png");
+    const provision = config.services["keycloak-config"].environment;
+    assert.equal(provision.KEYCLOAK_DISPLAY_NAME, "Acme 数字员工平台");
+    assert.equal(provision.KEYCLOAK_DISPLAY_LOGO_URL, "https://agents.example.cn/brand/logo.png");
+    const brandMount = config.services.caddy.volumes.find((v) => v.target === "/srv/brand");
+    assert.ok(brandMount, "caddy serves the branding directory");
+    assert.equal(brandMount.read_only, true);
+    assert.match(brandMount.source, /branding$/);
+  });
+
+  it("serves /brand/ from the branding directory before proxying to Paperclip", () => {
+    const caddyfile = fs.readFileSync(path.join(DEPLOY_SRC, "Caddyfile"), "utf8");
+    const app = caddyfile.slice(caddyfile.indexOf("{$APP_DOMAIN} {"), caddyfile.indexOf("{$SSO_DOMAIN} {"));
+    assert.match(app, /handle_path \/brand\/\* \{[^}]*root \* \/srv\/brand[^}]*file_server[^}]*\}/s);
+    assert.match(app, /handle \{[^}]*reverse_proxy paperclip:3100[^}]*\}/s);
+  });
+
   it("keeps the paperclip pid limit from the upstream compose file", () => {
     assert.equal(config.services.paperclip.pids_limit, 2048);
   });

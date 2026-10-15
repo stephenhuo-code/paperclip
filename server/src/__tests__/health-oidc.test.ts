@@ -84,3 +84,28 @@ describe("health auth.oidc", () => {
     expect(res.body).not.toHaveProperty("auth");
   });
 });
+
+describe("health auth.brand", () => {
+  it("adds the sign-in brand name and logo when configured", async () => {
+    const res = await request(createApp({
+      ...OIDC_ENV,
+      PAPERCLIP_BRAND_NAME: "FiveGuys 数字员工平台",
+      PAPERCLIP_BRAND_LOGO_URL: "https://agent.example.cn/brand/logo.png",
+    })).get("/health");
+
+    expect(res.body.auth).toEqual({
+      oidc: { enabled: true, providerId: "keycloak", label: "使用企业账号登录" },
+      brand: { name: "FiveGuys 数字员工平台", logoUrl: "https://agent.example.cn/brand/logo.png" },
+    });
+  });
+
+  it("sends the name alone when there is no logo", async () => {
+    const res = await request(createApp({ ...OIDC_ENV, PAPERCLIP_BRAND_NAME: "FiveGuys 数字员工平台", PAPERCLIP_BRAND_LOGO_URL: "" })).get("/health");
+    expect(res.body.auth.brand).toEqual({ name: "FiveGuys 数字员工平台" });
+  });
+
+  it("leaves the response unchanged when no brand is configured", async () => {
+    const res = await request(createApp(OIDC_ENV)).get("/health");
+    expect(res.body.auth).not.toHaveProperty("brand");
+  });
+});

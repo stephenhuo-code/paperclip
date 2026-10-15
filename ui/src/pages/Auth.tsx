@@ -81,6 +81,16 @@ export function AuthPage() {
   });
 
   const oidc = healthQuery.data?.auth?.oidc;
+  // Deployment branding for the sign-in page (deploy/aliyun PAPERCLIP_BRAND_NAME).
+  const brand = healthQuery.data?.auth?.brand;
+  useEffect(() => {
+    if (!brand?.name) return;
+    const previous = document.title;
+    document.title = brand.name;
+    return () => {
+      document.title = previous;
+    };
+  }, [brand?.name]);
   // With enterprise sign-in on, email/password is only the break-glass admin
   // path: folded away by default, and account creation is not offered.
   const showPasswordForm = !oidc?.enabled || showBreakGlass;
@@ -137,16 +147,27 @@ export function AuthPage() {
       <div className="w-full md:w-1/2 flex flex-col overflow-y-auto">
         <div className="w-full max-w-md mx-auto my-auto px-8 py-12">
           <div className="mb-8">
-            <PaperclipLockup className="h-5 w-auto" />
+            {brand ? (
+              <div className="flex items-center gap-2">
+                {brand.logoUrl && <img src={brand.logoUrl} alt="" className="h-8 w-auto" />}
+                <span className="text-base font-semibold">{brand.name}</span>
+              </div>
+            ) : (
+              <PaperclipLockup className="h-5 w-auto" />
+            )}
           </div>
 
           <h1 className="text-xl font-semibold">
-            {mode === "sign_in" ? "Sign in to Paperclip" : "Create your Paperclip account"}
+            {brand && mode === "sign_in"
+              ? `登录 ${brand.name}`
+              : mode === "sign_in" ? "Sign in to Paperclip" : "Create your Paperclip account"}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {mode === "sign_in"
-              ? "Use your email and password to access this instance."
-              : "Create an account for this instance. Email confirmation is not required in v1."}
+            {brand && mode === "sign_in"
+              ? "使用企业账号登录，访问数字员工平台"
+              : mode === "sign_in"
+                ? "Use your email and password to access this instance."
+                : "Create an account for this instance. Email confirmation is not required in v1."}
           </p>
 
           {oidc?.enabled && (

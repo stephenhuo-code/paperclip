@@ -22,6 +22,8 @@ services:
       CADDY_TLS_DIRECTIVE: ${CADDY_TLS_DIRECTIVE:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Sign-in page logo, served at https://${APP_DOMAIN}/brand/.
+      - ./branding:/srv/brand:ro
       - caddy-data:/data
       - caddy-config:/config
     networks:
@@ -53,6 +55,8 @@ services:
       PAPERCLIP_AUTH_OIDC_CLIENT_SECRET: ${PAPERCLIP_AUTH_OIDC_CLIENT_SECRET}
       PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP: ${PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP:-}
       PAPERCLIP_AUTH_OIDC_LABEL: ${PAPERCLIP_AUTH_OIDC_LABEL}
+      PAPERCLIP_BRAND_NAME: ${PAPERCLIP_BRAND_NAME:-}
+      PAPERCLIP_BRAND_LOGO_URL: ${PAPERCLIP_BRAND_LOGO_URL:-}
       PAPERCLIP_AUTH_SESSION_TTL_SECONDS: "86400"
       PAPERCLIP_AUTH_DISABLE_SIGN_UP: ${PAPERCLIP_AUTH_DISABLE_SIGN_UP:-false}
       # Empty keeps better-auth rate limiting on; only local smoke tests set "false".
@@ -108,6 +112,8 @@ services:
       KEYCLOAK_ORG_DOMAIN: ${KEYCLOAK_ORG_DOMAIN}
       APP_DOMAIN: ${APP_DOMAIN}
       PAPERCLIP_AUTH_OIDC_CLIENT_SECRET: ${PAPERCLIP_AUTH_OIDC_CLIENT_SECRET}
+      KEYCLOAK_DISPLAY_NAME: ${PAPERCLIP_BRAND_NAME:-}
+      KEYCLOAK_DISPLAY_LOGO_URL: ${PAPERCLIP_BRAND_LOGO_URL:-}
     volumes:
       - ./keycloak/provision.sh:/provision/provision.sh:ro
     depends_on:
