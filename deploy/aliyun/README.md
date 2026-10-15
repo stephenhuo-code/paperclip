@@ -94,7 +94,25 @@ ACR_USERNAME=<ACR 用户名> ACR_PASSWORD=<ACR 密码> ./scripts/bootstrap.sh pr
 
 ## 首个管理员与组织映射
 
-公网部署不允许在浏览器里直接认领实例，按以下步骤（FR-022，只做一次）：
+首次发布后，在服务器上以 root 运行引导脚本，按提示输入即可（只做一次，可重复运行）：
+
+```sh
+/opt/paperclip/deploy/scripts/first-run.sh production
+```
+
+它依次完成（已完成的步骤自动跳过，执行前汇总并要求确认）：
+
+1. 创建你自己的 **Keycloak 管理员**（master realm，权限与 `provisioner` 相同）；
+2. 创建 **Paperclip 管理员**（邮箱密码登录的应急管理员，成为实例管理员）；
+3. 创建**公司**，管理员为 owner；已有公司时直接选用；
+4. 在 Keycloak 组织中创建管理员**同邮箱的企业账号**（密码须与应急密码不同），管理员用企业账号登录即为同一个 owner；
+5. 把公司关联到 Keycloak 组织、关闭邮箱注册，并重新部署当前版本。
+
+密码输入不回显，不会出现在屏幕、日志和命令历史里。员工之后统一在 Keycloak 管理台添加（见下一节）。
+
+### 备用：手动初始化
+
+公网部署不允许在浏览器里直接认领实例。不用脚本时按以下步骤（FR-022）：
 
 1. 在服务器上生成一次性邀请链接：
 
@@ -121,7 +139,7 @@ ACR_USERNAME=<ACR 用户名> ACR_PASSWORD=<ACR 密码> ./scripts/bootstrap.sh pr
 
 用管理员网段内的电脑打开 `https://<SSO_DOMAIN>/admin/`：
 
-- **首次登录**用户名 `provisioner`，口令是 `/opt/paperclip/.env` 里的 `KC_BOOTSTRAP_ADMIN_PASSWORD`。登录后在 master realm 为自己**另建管理员账号**，日常使用自己的账号。**不要删除 `provisioner`**：每次部署的 Keycloak 初始化要用它。
+- **登录**：用 `first-run.sh` 创建的 Keycloak 管理员。部署自带的 `provisioner`（口令是 `/opt/paperclip/.env` 里的 `KC_BOOTSTRAP_ADMIN_PASSWORD`）只作备用，**不要删除**：每次部署的 Keycloak 初始化要用它。
 - **新增员工**：在 realm 中创建用户，**勾选"邮箱已验证"**，设置初始密码，再在 **Organizations → <组织> → Members** 中把用户加入组织。用户第一次登录 Paperclip 时自动建号并加入公司，无需在 Paperclip 中邀请。
 - **员工离职**：在 Keycloak 中停用用户或将其移出组织。下次登录即被拒绝；已有会话最长 24 小时内失效（SC-004）。
 - **管理员角色**在 Paperclip 中设置（公司设置 → 成员），登录不会覆盖（FR-006）。

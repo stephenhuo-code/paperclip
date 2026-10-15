@@ -100,4 +100,15 @@ check "assigned agent-creator role is kept" "$(KC get-roles -r dw --uusername ma
 check "owned mapper setting id.token.claim is restored" "$(mapper_config id.token.claim)" "true"
 check "unmanaged realm setting is left alone" "$(KC get realms/dw --fields displayName --format csv --noquotes)" "Acme Workforce"
 
+# specs/003-first-run-setup: first-run.sh hands passwords to kcadm on stdin only.
+KC create users -r master -s username=stdin-admin -s enabled=true >/dev/null
+SID=$(KC get users -r master -q username=stdin-admin -q exact=true --fields id --format csv --noquotes)
+printf '{"type":"password","value":"Stdin#Password2026","temporary":false}' \
+  | docker exec -i "$NAME" /opt/keycloak/bin/kcadm.sh update "users/$SID/reset-password" -r master -f -
+# shellcheck disable=SC2016
+check "kcadm sets a password read from stdin and logs in with a password read from stdin" \
+  "$(printf 'Stdin#Password2026\n' | docker exec -i "$NAME" bash -c \
+    'IFS= read -r password && /opt/keycloak/bin/kcadm.sh config credentials --config "$1" --server http://localhost:8080 --realm master --user stdin-admin --password "$password" >/dev/null && echo ok' \
+    kcadm /tmp/stdin-test.config)" "ok"
+
 exit "$FAILED"

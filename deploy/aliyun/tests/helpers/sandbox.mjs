@@ -17,7 +17,71 @@ printf '%s %s%s\n' "$name" "$*" "${'${PAPERCLIP_IMAGE_TAG:+ [PAPERCLIP_IMAGE_TAG
 args=" $* "
 case "$name" in
   docker)
+    # Like the real CLI, \`docker exec -T\` forwards stdin into the container
+    # and reads it to the end; only calls that expect stdin keep it.
     case "$args" in
+      *"/reset-password "*|*" bash -c "*) ;;
+      *" exec -T "*) if [ ! -t 0 ]; then cat >/dev/null; fi ;;
+    esac
+    case "$args" in
+      *" exec -T keycloak /opt/keycloak/bin/kcadm.sh "*)
+        # Fake kcadm.sh: users, passwords, roles and organization members are
+        # kept in $FAKE_STATE so later calls (and reruns) see earlier writes.
+        realm="" sets="" query="" body="" prev=""
+        for a in "$@"; do
+          case "$prev" in
+            -r) realm="$a" ;;
+            -s) sets="$sets $a" ;;
+            -q) query="$query $a" ;;
+            -b) body="$a" ;;
+          esac
+          prev="$a"
+        done
+        touch "$FAKE_STATE/kc-users" "$FAKE_STATE/kc-members"
+        case "$args" in
+          *" config credentials "*) exit "${'${FAKE_KC_LOGIN_EXIT:-0}'}" ;;
+          *"/reset-password "*)
+            id="${'${args#*users/}'}"; id="${'${id%%/reset-password*}'}"
+            cat > "$FAKE_STATE/kc-password-$id" ;;
+          *" get users "*)
+            case "$query" in
+              *" username="*)
+                user="${'${query#* username=}'}"; user="${'${user%% *}'}"
+                if [ "$realm" = master ] && { [ "${'${FAKE_KC_MASTER_ADMIN:-}'}" = "$user" ] || grep -qx "master:$user" "$FAKE_STATE/kc-users"; }; then
+                  echo "id-master-$user"
+                fi ;;
+              *" email="*)
+                mail="${'${query#* email=}'}"; mail="${'${mail%% *}'}"
+                if [ "${'${FAKE_KC_REALM_USER:-}'}" = "$mail" ] || grep -qx "$realm:$mail" "$FAKE_STATE/kc-users"; then
+                  echo "id-realm-$mail"
+                fi ;;
+            esac ;;
+          *" create users "*)
+            if [ "$realm" = master ]; then
+              user="${'${sets#* username=}'}"; user="${'${user%% *}'}"
+              echo "master:$user" >> "$FAKE_STATE/kc-users"; echo "id-master-$user"
+            else
+              mail="${'${sets#* email=}'}"; mail="${'${mail%% *}'}"
+              echo "$realm:$mail" >> "$FAKE_STATE/kc-users"; echo "id-realm-$mail"
+            fi ;;
+          *" get organizations/"*"/members "*)
+            if [ -n "${'${FAKE_KC_REALM_MEMBER:-}'}" ]; then echo "$FAKE_KC_REALM_MEMBER"; fi
+            cat "$FAKE_STATE/kc-members" ;;
+          *" get organizations "*) echo "org-1,acme" ;;
+          *" create organizations/"*"/members "*)
+            id="$(printf '%s' "$body" | tr -d '"')"; echo "$id" >> "$FAKE_STATE/kc-members" ;;
+        esac
+        exit 0 ;;
+      *" exec -T postgres psql "*)
+        touch "$FAKE_STATE/pc-admin" "$FAKE_STATE/pc-companies"
+        case "$args" in
+          *instance_user_roles*)
+            if [ -n "${'${FAKE_PC_ADMIN:-}'}" ]; then echo "$FAKE_PC_ADMIN"; else cat "$FAKE_STATE/pc-admin"; fi ;;
+          *companies*)
+            if [ -n "${'${FAKE_PC_COMPANIES:-}'}" ]; then printf '%b\n' "$FAKE_PC_COMPANIES"; fi
+            cat "$FAKE_STATE/pc-companies" ;;
+        esac
+        exit 0 ;;
       *" exec -T keycloak "*)
         if [ "${'${FAKE_KEYCLOAK_READY:-1}'}" = "1" ]; then echo "HTTP/1.1 200 OK"; else echo "HTTP/1.1 503"; fi ;;
       *" exec -T postgres pg_dump "*)
@@ -36,7 +100,46 @@ case "$name" in
       *"/api/health"*)
         printf '%s' "${'${FAKE_HEALTH_BODY:-}'}"
         exit "${'${FAKE_CURL_EXIT:-0}'}" ;;
-    esac ;;
+    esac
+    # Fake Paperclip API: request bodies (which carry passwords) go to
+    # $FAKE_STATE, never to the call log.
+    out="" jar="" url="" data=0 prev=""
+    for a in "$@"; do
+      case "$prev" in -o) out="$a" ;; -c|--cookie-jar) jar="$a" ;; esac
+      case "$a" in https://*) url="$a" ;; @-) data=1 ;; esac
+      prev="$a"
+    done
+    request=""
+    if [ "$data" = 1 ]; then request="$(cat)"; fi
+    n=$(( $(cat "$FAKE_STATE/curl-n" 2>/dev/null || echo 0) + 1 ))
+    echo "$n" > "$FAKE_STATE/curl-n"
+    if [ -n "$request" ]; then printf '%s' "$request" > "$FAKE_STATE/curl-body-$n"; fi
+    if [ -n "$jar" ]; then echo "fake-session" > "$jar"; fi
+    status=200 response='{}'
+    case "$url" in
+      */api/auth/sign-up/email)
+        if [ "${'${FAKE_SIGNUP_EMAIL_TAKEN:-0}'}" = 1 ] && [ ! -f "$FAKE_STATE/signup-taken-once" ]; then
+          touch "$FAKE_STATE/signup-taken-once"
+          status=422 response='{"code":"USER_ALREADY_EXISTS","message":"User already exists"}'
+        else
+          mail="$(printf '%s' "$request" | sed -n 's/.*"email":"\([^"]*\)".*/\1/p')"
+          name="$(printf '%s' "$request" | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')"
+          echo "$mail|$name" > "$FAKE_STATE/pc-signup"
+        fi ;;
+      */api/invites/*/accept)
+        cp "$FAKE_STATE/pc-signup" "$FAKE_STATE/pc-admin" 2>/dev/null || true ;;
+      */api/companies)
+        if [ "${'${FAKE_COMPANY_CREATE_FAIL:-0}'}" = 1 ]; then
+          status=500 response='{"error":"Internal server error"}'
+        else
+          name="$(printf '%s' "$request" | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')"
+          echo "company-new|$name" >> "$FAKE_STATE/pc-companies"
+          status=201 response="{\"id\":\"company-new\",\"name\":\"$name\"}"
+        fi ;;
+    esac
+    if [ -n "$out" ]; then printf '%s' "$response" > "$out"; fi
+    printf '%s' "$status"
+    exit 0 ;;
   ossutil)
     if [ "${'${FAKE_OSSUTIL_EXIT:-0}'}" != "0" ]; then exit "$FAKE_OSSUTIL_EXIT"; fi
     # "ossutil cp -r oss://bucket/date/ <dest>" materializes a backup set.
@@ -88,6 +191,11 @@ export function createSandbox() {
   }
   const log = path.join(dir, "calls.log");
   fs.writeFileSync(log, "");
+  // remote-deploy.sh is installed by bootstrap.sh; a stand-in records its calls.
+  fs.mkdirSync(path.join(root, "bin"), { recursive: true });
+  fs.writeFileSync(path.join(root, "bin", "remote-deploy.sh"),
+    '#!/usr/bin/env bash\nprintf \'remote-deploy.sh %s\\n\' "$*" >> "$FAKE_LOG"\nexit "${FAKE_REDEPLOY_EXIT:-0}"\n',
+    { mode: 0o755 });
 
   return {
     dir,
@@ -110,9 +218,10 @@ export function createSandbox() {
     calls() {
       return fs.readFileSync(log, "utf8").split("\n").filter(Boolean);
     },
-    run(script, args = [], env = {}) {
+    run(script, args = [], env = {}, input = "") {
       const result = spawnSync("bash", [path.join(root, "deploy", "scripts", script), ...args], {
         encoding: "utf8",
+        input,
         env: {
           PATH: `${bin}:${process.env.PATH}`,
           // Scripts and tests must agree on "today" (backup folder names).
@@ -127,6 +236,13 @@ export function createSandbox() {
         },
       });
       return { status: result.status, stdout: result.stdout, stderr: result.stderr, output: result.stdout + result.stderr };
+    },
+    stateFile(name) {
+      const file = path.join(state, name);
+      return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+    },
+    stateFiles() {
+      return fs.readdirSync(state);
     },
     cleanup() {
       fs.rmSync(dir, { recursive: true, force: true });
