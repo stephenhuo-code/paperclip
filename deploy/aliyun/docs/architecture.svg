@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 800" width="1300" height="800" font-family="PingFang SC, Microsoft YaHei, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .box { fill: #fff; stroke: #94a3b8; stroke-width: 1.5; rx: 10; }
+      .t { font-size: 16px; font-weight: 600; fill: #0f172a; text-anchor: middle; }
+      .s { font-size: 12.5px; fill: #475569; text-anchor: middle; }
+      .l { font-size: 12px; fill: #334155; }
+      .ln { stroke: #475569; stroke-width: 1.6; fill: none; marker-end: url(#a); }
+      .dash { stroke-dasharray: 6 4; }
+    </style>
+  </defs>
+
+  <rect width="1300" height="800" fill="#f8fafc"/>
+  <text x="650" y="42" class="t" style="font-size:22px">FiveGuys 数字员工平台 · Paperclip 架构（阿里云部署）</text>
+
+  <!-- ECS -->
+  <rect x="220" y="75" width="830" height="635" rx="16" fill="#eef2ff" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="8 5"/>
+  <text x="240" y="100" class="l" style="font-size:14px;font-weight:600;fill:#4338ca">阿里云 ECS（Docker Compose，单台 4C8G）</text>
+
+  <!-- Caddy -->
+  <rect x="250" y="125" width="170" height="110" class="box" style="fill:#ecfeff;stroke:#06b6d4"/>
+  <text x="335" y="160" class="t">Caddy</text>
+  <text x="335" y="183" class="s">反向代理 · 自动 HTTPS</text>
+  <text x="335" y="202" class="s">/brand/ 提供 logo</text>
+  <text x="335" y="221" class="s">唯一对外 80/443</text>
+
+  <!-- Keycloak -->
+  <rect x="250" y="300" width="170" height="110" class="box" style="fill:#fff7ed;stroke:#f97316"/>
+  <text x="335" y="335" class="t">Keycloak</text>
+  <text x="335" y="358" class="s">企业账号 · 单点登录</text>
+  <text x="335" y="377" class="s">组织 fiveguys</text>
+  <text x="335" y="396" class="s">角色 agent-creator</text>
+
+  <!-- keycloak-config -->
+  <rect x="250" y="470" width="170" height="64" class="box"/>
+  <text x="335" y="497" class="t" style="font-size:14px">keycloak-config</text>
+  <text x="335" y="518" class="s">每次部署初始化 realm</text>
+
+  <!-- backup -->
+  <rect x="250" y="600" width="170" height="64" class="box"/>
+  <text x="335" y="627" class="t" style="font-size:14px">每日备份 03:00</text>
+  <text x="335" y="648" class="s">backup.sh</text>
+
+  <!-- Paperclip -->
+  <rect x="470" y="110" width="550" height="335" rx="14" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="490" y="135" class="l" style="font-size:14px;font-weight:600;fill:#15803d">Paperclip 容器（Node.js）</text>
+
+  <rect x="490" y="150" width="155" height="64" class="box"/>
+  <text x="567" y="177" class="t" style="font-size:14px">Web 界面</text>
+  <text x="567" y="198" class="s">React · 看板/任务/审批</text>
+
+  <rect x="660" y="150" width="155" height="64" class="box"/>
+  <text x="737" y="177" class="t" style="font-size:14px">API 服务</text>
+  <text x="737" y="198" class="s">公司 · agent · 任务</text>
+
+  <rect x="830" y="150" width="170" height="64" class="box"/>
+  <text x="915" y="177" class="t" style="font-size:14px">认证与权限</text>
+  <text x="915" y="198" class="s">OIDC · owner/admin/员工</text>
+
+  <rect x="490" y="235" width="155" height="64" class="box"/>
+  <text x="567" y="262" class="t" style="font-size:14px">心跳调度</text>
+  <text x="567" y="283" class="s">每 30 秒唤醒 agent</text>
+
+  <rect x="660" y="235" width="340" height="64" class="box"/>
+  <text x="830" y="262" class="t" style="font-size:14px">运行适配器（adapter）</text>
+  <text x="830" y="283" class="s">Claude Code · Codex · Kimi Code</text>
+
+  <rect x="490" y="325" width="510" height="100" class="box" style="fill:#fefce8;stroke:#eab308"/>
+  <text x="745" y="355" class="t">数字员工（agent 子进程）</text>
+  <text x="745" y="380" class="s">CLI 在各自的任务工作区里执行：读写代码与文件、调用工具</text>
+  <text x="745" y="401" class="s">用 PAPERCLIP_API_KEY 回调 API：领取任务、汇报进度、评论</text>
+
+  <!-- Postgres -->
+  <rect x="470" y="490" width="550" height="100" rx="14" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="490" y="514" class="l" style="font-size:14px;font-weight:600;fill:#1d4ed8">PostgreSQL 17</text>
+  <rect x="490" y="525" width="250" height="50" class="box"/>
+  <text x="615" y="555" class="s" style="fill:#0f172a">paperclip 库：公司、agent、任务、审批</text>
+  <rect x="755" y="525" width="245" height="50" class="box"/>
+  <text x="877" y="555" class="s" style="fill:#0f172a">keycloak 库：用户、组织、角色</text>
+
+  <!-- volume -->
+  <rect x="470" y="610" width="550" height="64" class="box"/>
+  <text x="745" y="637" class="t" style="font-size:14px">数据卷</text>
+  <text x="745" y="658" class="s">agent 工作区 · 附件 · 密钥 · CLI 登录凭证</text>
+
+  <!-- outside: users -->
+  <rect x="30" y="140" width="155" height="70" class="box"/>
+  <text x="107" y="170" class="t" style="font-size:14px">员工 / 管理员</text>
+  <text x="107" y="191" class="s">浏览器</text>
+
+  <rect x="30" y="215" width="155" height="70" class="box"/>
+  <text x="107" y="245" class="t" style="font-size:14px">运维</text>
+  <text x="107" y="266" class="s">Keycloak 管理台</text>
+
+  <!-- outside: CI -->
+  <rect x="1090" y="110" width="185" height="120" class="box"/>
+  <text x="1182" y="140" class="t" style="font-size:14px">发布流水线</text>
+  <text x="1182" y="164" class="s">GitHub Actions 构建</text>
+  <text x="1182" y="184" class="s">→ ACR 镜像仓库</text>
+  <text x="1182" y="204" class="s">→ 云助手部署（可回滚）</text>
+
+  <!-- outside: models -->
+  <rect x="1090" y="320" width="185" height="110" class="box" style="fill:#fdf4ff;stroke:#c026d3"/>
+  <text x="1182" y="352" class="t" style="font-size:14px">大模型服务</text>
+  <text x="1182" y="376" class="s">DeepSeek · Kimi</text>
+  <text x="1182" y="396" class="s">Anthropic · OpenAI</text>
+  <text x="1182" y="416" class="s">（API Key 或订阅登录）</text>
+
+  <!-- outside: OSS -->
+  <rect x="1090" y="600" width="185" height="64" class="box"/>
+  <text x="1182" y="627" class="t" style="font-size:14px">阿里云 OSS</text>
+  <text x="1182" y="648" class="s">备份存储</text>
+
+  <!-- arrows -->
+  <path d="M185 175 H248" class="ln"/>
+  <path d="M185 250 H215 V200 H248" class="ln"/>
+  <text x="196" y="132" class="l">HTTPS</text>
+
+  <path d="M420 165 H468" class="ln"/>
+  <text x="424" y="157" class="l">agent 域名</text>
+  <path d="M335 235 V298" class="ln"/>
+  <text x="342" y="272" class="l">sso 域名</text>
+
+  <path d="M420 330 H468" class="ln dash"/>
+  <text x="424" y="322" class="l">OIDC</text>
+
+  <path d="M335 470 V412" class="ln"/>
+  <path d="M420 395 H448 V583 H877 V578" class="ln"/>
+
+  <path d="M645 267 H658" class="ln"/>
+  <path d="M830 299 V323" class="ln"/>
+  <path d="M1000 375 H1088" class="ln"/>
+  <text x="1010" y="367" class="l">模型 API</text>
+
+  <path d="M615 445 V523" class="ln"/>
+  <path d="M1000 405 H1035 V642 H1022" class="ln dash"/>
+
+  <path d="M1090 170 H1052" class="ln"/>
+  <text x="1056" y="162" class="l">发布</text>
+
+  <path d="M420 632 H468" class="ln dash"/>
+  <path d="M335 664 V735 H1182 V666" class="ln"/>
+  <text x="680" y="728" class="l">数据库 + 数据卷 → OSS</text>
+
+  <!-- legend -->
+  <g transform="translate(30,760)">
+    <line x1="0" y1="0" x2="36" y2="0" class="ln"/>
+    <text x="44" y="4" class="l">请求 / 数据流</text>
+    <line x1="150" y1="0" x2="186" y2="0" class="ln dash"/>
+    <text x="194" y="4" class="l">认证 / 读写数据卷</text>
+  </g>
+</svg>
