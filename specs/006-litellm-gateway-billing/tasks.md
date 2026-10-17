@@ -97,7 +97,7 @@
 - [X] T040 [P] `deploy/aliyun/README.md`：架构、服务表、密钥表、域名与 DNS、首次部署步骤加入网关；`deploy/aliyun/docs/architecture.svg` 加入 litellm 与 gateway-sync
 - [X] T041 运行 `deploy/aliyun/tests/run.sh`、`litellm-hooks-test.sh`、`keycloak-provision-test.sh`，全部通过
 - [X] T042 本地 `~/paperclip-local` 全流程验证（plan"测试与验证"第 4 步），包括：两个 agent 同时运行时花费 100% 归到项目、项目超预算被暂停、重复写回不重复、自定义启动命令的 agent 不被修改、网关停止时运行失败并给出原因；结果写入 `specs/006-litellm-gateway-billing/verification.md`
-- [ ] T043 提交（实验目录 `deploy/aliyun/experiments/litellm-verify/` 一并提交为验证记录，不含 Key）；由用户推送发布
+- [X] T043 提交（实验目录 `deploy/aliyun/experiments/litellm-verify/` 一并提交为验证记录，不含 Key）；由用户推送发布
 
 ## 依赖与并行
 
