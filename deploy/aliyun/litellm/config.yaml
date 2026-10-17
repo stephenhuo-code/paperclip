@@ -1,0 +1,11 @@
+# LiteLLM proxy settings (specs/006-litellm-gateway-billing).
+# Models, prices and upstream keys are NOT defined here: add them in the admin
+# UI (https://<LLM_DOMAIN>/ui) so they can be edited there. Models written in
+# this file show as "Defined in config" and cannot be edited in the UI.
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+
+litellm_settings:
+  # Forward the caller's User-Agent; refuse models without prices (hooks.py).
+  callbacks: hooks.proxy_handler_instance

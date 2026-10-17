@@ -16,7 +16,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 day="$(date +%F)"
 
-for db in paperclip keycloak; do
+for db in paperclip keycloak litellm; do
   compose exec -T postgres pg_dump -U postgres -Fc "$db" > "$work/$db.dump"
 done
 compose exec -T paperclip tar czf - -C /paperclip/instances/default data/storage secrets \

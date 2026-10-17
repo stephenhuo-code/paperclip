@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 800" width="1300" height="800" font-family="PingFang SC, Microsoft YaHei, Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 800" width="1500" height="800" font-family="PingFang SC, Microsoft YaHei, Helvetica, Arial, sans-serif">
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" fill="#475569"/>
@@ -13,11 +13,11 @@
     </style>
   </defs>
 
-  <rect width="1300" height="800" fill="#f8fafc"/>
-  <text x="650" y="42" class="t" style="font-size:22px">FiveGuys 数字员工平台 · Paperclip 架构（阿里云部署）</text>
+  <rect width="1500" height="800" fill="#f8fafc"/>
+  <text x="750" y="42" class="t" style="font-size:22px">FiveGuys 数字员工平台 · Paperclip 架构（阿里云部署，含模型网关）</text>
 
   <!-- ECS -->
-  <rect x="220" y="75" width="830" height="635" rx="16" fill="#eef2ff" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="8 5"/>
+  <rect x="220" y="75" width="1030" height="635" rx="16" fill="#eef2ff" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="8 5"/>
   <text x="240" y="100" class="l" style="font-size:14px;font-weight:600;fill:#4338ca">阿里云 ECS（Docker Compose，单台 4C8G）</text>
 
   <!-- Caddy -->
@@ -79,7 +79,7 @@
   <rect x="490" y="525" width="250" height="50" class="box"/>
   <text x="615" y="555" class="s" style="fill:#0f172a">paperclip 库：公司、agent、任务、审批</text>
   <rect x="755" y="525" width="245" height="50" class="box"/>
-  <text x="877" y="555" class="s" style="fill:#0f172a">keycloak 库：用户、组织、角色</text>
+  <text x="877" y="555" class="s" style="fill:#0f172a">keycloak 库 · litellm 库（网关）</text>
 
   <!-- volume -->
   <rect x="470" y="610" width="550" height="64" class="box"/>
@@ -96,23 +96,23 @@
   <text x="107" y="266" class="s">Keycloak 管理台</text>
 
   <!-- outside: CI -->
-  <rect x="1090" y="110" width="185" height="120" class="box"/>
-  <text x="1182" y="140" class="t" style="font-size:14px">发布流水线</text>
-  <text x="1182" y="164" class="s">GitHub Actions 构建</text>
-  <text x="1182" y="184" class="s">→ ACR 镜像仓库</text>
-  <text x="1182" y="204" class="s">→ 云助手部署（可回滚）</text>
+  <rect x="1290" y="110" width="185" height="120" class="box"/>
+  <text x="1382" y="140" class="t" style="font-size:14px">发布流水线</text>
+  <text x="1382" y="164" class="s">GitHub Actions 构建</text>
+  <text x="1382" y="184" class="s">→ ACR 镜像仓库</text>
+  <text x="1382" y="204" class="s">→ 云助手部署（可回滚）</text>
 
   <!-- outside: models -->
-  <rect x="1090" y="320" width="185" height="110" class="box" style="fill:#fdf4ff;stroke:#c026d3"/>
-  <text x="1182" y="352" class="t" style="font-size:14px">大模型服务</text>
-  <text x="1182" y="376" class="s">DeepSeek · Kimi</text>
-  <text x="1182" y="396" class="s">Anthropic · OpenAI</text>
-  <text x="1182" y="416" class="s">（API Key 或订阅登录）</text>
+  <rect x="1290" y="320" width="185" height="110" class="box" style="fill:#fdf4ff;stroke:#c026d3"/>
+  <text x="1382" y="352" class="t" style="font-size:14px">大模型服务</text>
+  <text x="1382" y="376" class="s">DeepSeek · Kimi</text>
+  <text x="1382" y="396" class="s">Anthropic · OpenAI</text>
+  <text x="1382" y="416" class="s">（API Key 或订阅登录）</text>
 
   <!-- outside: OSS -->
-  <rect x="1090" y="600" width="185" height="64" class="box"/>
-  <text x="1182" y="627" class="t" style="font-size:14px">阿里云 OSS</text>
-  <text x="1182" y="648" class="s">备份存储</text>
+  <rect x="1290" y="600" width="185" height="64" class="box"/>
+  <text x="1382" y="627" class="t" style="font-size:14px">阿里云 OSS</text>
+  <text x="1382" y="648" class="s">备份存储</text>
 
   <!-- arrows -->
   <path d="M185 175 H248" class="ln"/>
@@ -132,18 +132,38 @@
 
   <path d="M645 267 H658" class="ln"/>
   <path d="M830 299 V323" class="ln"/>
-  <path d="M1000 375 H1088" class="ln"/>
-  <text x="1010" y="367" class="l">模型 API</text>
+  <path d="M1000 375 H1058" class="ln"/>
+  <text x="1004" y="367" class="l">HTTPS</text>
 
   <path d="M615 445 V523" class="ln"/>
   <path d="M1000 405 H1035 V642 H1022" class="ln dash"/>
 
-  <path d="M1090 170 H1052" class="ln"/>
-  <text x="1056" y="162" class="l">发布</text>
+  <path d="M1290 170 H1252" class="ln"/>
+  <text x="1256" y="162" class="l">发布</text>
 
   <path d="M420 632 H468" class="ln dash"/>
-  <path d="M335 664 V735 H1182 V666" class="ln"/>
+  <path d="M335 664 V735 H1382 V666" class="ln"/>
   <text x="680" y="728" class="l">数据库 + 数据卷 → OSS</text>
+
+
+  <!-- model gateway (specs/006) -->
+  <rect x="1060" y="300" width="170" height="150" class="box" style="fill:#fdf4ff;stroke:#c026d3"/>
+  <text x="1145" y="330" class="t" style="font-size:15px">模型网关</text>
+  <text x="1145" y="351" class="s">LiteLLM · LLM_DOMAIN</text>
+  <text x="1145" y="372" class="s">上游 Key · 单价</text>
+  <text x="1145" y="393" class="s">按调用计费</text>
+  <text x="1145" y="414" class="s">未设单价拒绝调用</text>
+  <text x="1145" y="435" class="s">管理界面 /ui</text>
+  <rect x="1060" y="490" width="170" height="100" class="box"/>
+  <text x="1145" y="518" class="t" style="font-size:14px">gateway-sync</text>
+  <text x="1145" y="539" class="s">每 30 秒：花费按运行</text>
+  <text x="1145" y="558" class="s">写回 Paperclip 预算</text>
+  <text x="1145" y="577" class="s">补齐 agent 启动命令</text>
+  <path d="M1230 375 H1288" class="ln"/>
+  <text x="1236" y="367" class="l">模型 API</text>
+  <path d="M1145 450 V488" class="ln dash"/>
+  <path d="M1060 520 H1028 V430 H1022" class="ln"/>
+  <text x="1036" y="500" class="l">费用</text>
 
   <!-- legend -->
   <g transform="translate(30,760)">

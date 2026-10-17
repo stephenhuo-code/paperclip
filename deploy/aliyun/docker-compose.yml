@@ -16,6 +16,7 @@ services:
     environment:
       APP_DOMAIN: ${APP_DOMAIN}
       SSO_DOMAIN: ${SSO_DOMAIN}
+      LLM_DOMAIN: ${LLM_DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL}
       ADMIN_ALLOWED_CIDRS: ${ADMIN_ALLOWED_CIDRS}
       # "tls internal" for local smoke tests; empty in production (ACME).
@@ -33,9 +34,12 @@ services:
         aliases:
           - ${APP_DOMAIN}
           - ${SSO_DOMAIN}
+          # Paperclip reaches the model gateway over HTTPS (it accepts no plain-HTTP gateways).
+          - ${LLM_DOMAIN}
     depends_on:
       - paperclip
       - keycloak
+      - litellm
 
   paperclip:
     image: ${ACR_REGISTRY_VPC}/${ACR_NAMESPACE}/paperclip:${PAPERCLIP_IMAGE_TAG:?PAPERCLIP_IMAGE_TAG is required}
@@ -74,6 +78,9 @@ services:
       NODE_EXTRA_CA_CERTS: ${PAPERCLIP_EXTRA_CA_CERTS:-}
     volumes:
       - paperclip-data:/paperclip
+      # ACP launcher that tags each model request with its Paperclip run
+      # (specs/006); gateway-sync sets it as the agent's ACP server command.
+      - ./litellm/claude-agent-acp-tagged.sh:/usr/local/bin/claude-agent-acp-tagged:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,6 +126,52 @@ services:
     depends_on:
       - keycloak
 
+  # Model gateway (specs/006-litellm-gateway-billing): models, prices and
+  # upstream keys are managed in its admin UI and kept (encrypted with the
+  # salt key, which must never change) in the litellm database.
+  litellm:
+    image: ${ACR_REGISTRY_VPC}/${ACR_NAMESPACE}/litellm:${LITELLM_VERSION}
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      # LiteLLM requires the master key to start with "sk-".
+      LITELLM_MASTER_KEY: sk-${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY is required}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?LITELLM_SALT_KEY is required}
+      DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD is required}@postgres:5432/litellm
+      STORE_MODEL_IN_DB: "True"
+      NO_DOCS: "True"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+      - ./litellm/hooks.py:/app/hooks.py:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Writes gateway spend back to Paperclip per run and fills in the launcher
+  # on agents that use the gateway (specs/006). Reads both databases
+  # read-only; writes only through Paperclip's API.
+  gateway-sync:
+    image: ${ACR_REGISTRY_VPC}/${ACR_NAMESPACE}/paperclip-gateway-sync:${PAPERCLIP_IMAGE_TAG:?PAPERCLIP_IMAGE_TAG is required}
+    restart: unless-stopped
+    environment:
+      LITELLM_DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD}@postgres:5432/litellm
+      PAPERCLIP_DATABASE_URL: postgresql://paperclip_readonly:${PAPERCLIP_READONLY_DB_PASSWORD}@postgres:5432/paperclip
+      PAPERCLIP_URL: http://paperclip:3100
+      PAPERCLIP_ORIGIN: https://${APP_DOMAIN}
+      # The Paperclip account gateway-sync signs in as (README "模型网关"); empty until set.
+      PAPERCLIP_SYNC_EMAIL: ${PAPERCLIP_SYNC_EMAIL:-}
+      PAPERCLIP_SYNC_PASSWORD: ${PAPERCLIP_SYNC_PASSWORD:-}
+      PAPERCLIP_GATEWAY_CONNECTION_NAME: ${PAPERCLIP_GATEWAY_CONNECTION_NAME:-模型网关}
+      ACP_LAUNCHER: /usr/local/bin/claude-agent-acp-tagged
+    healthcheck:
+      test: ["CMD", "node", "/app/health.mjs"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      - paperclip
+      - litellm
+
   postgres:
     image: ${ACR_REGISTRY_VPC}/${ACR_NAMESPACE}/postgres:${POSTGRES_VERSION}
     restart: unless-stopped
@@ -126,9 +179,13 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PAPERCLIP_DB_PASSWORD: ${PAPERCLIP_DB_PASSWORD}
       KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      LITELLM_DB_PASSWORD: ${LITELLM_DB_PASSWORD}
+      PAPERCLIP_READONLY_DB_PASSWORD: ${PAPERCLIP_READONLY_DB_PASSWORD:?PAPERCLIP_READONLY_DB_PASSWORD is required}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+      # Also run by deploy.sh on every deploy (idempotent).
+      - ./postgres/ensure-roles.sh:/docker-entrypoint-initdb.d/20-ensure-roles.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s

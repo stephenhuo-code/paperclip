@@ -28,7 +28,7 @@ const REQUIRED_PAPERCLIP_ENV = [
   "DISABLE_AUTOUPDATER",
   "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
 ];
-const LONG_RUNNING = ["caddy", "paperclip", "keycloak", "postgres"];
+const LONG_RUNNING = ["caddy", "paperclip", "keycloak", "postgres", "litellm", "gateway-sync"];
 
 function envKeys(service) {
   return Object.keys(service.environment ?? {});
@@ -59,8 +59,8 @@ describe("docker-compose.yml", () => {
     config = JSON.parse(result.stdout);
   });
 
-  it("defines the four long-running services and the one-shot Keycloak provisioning job", () => {
-    assert.deepEqual(Object.keys(config.services).sort(), ["caddy", "keycloak", "keycloak-config", "paperclip", "postgres"]);
+  it("defines the long-running services and the one-shot Keycloak provisioning job", () => {
+    assert.deepEqual(Object.keys(config.services).sort(), ["caddy", "gateway-sync", "keycloak", "keycloak-config", "litellm", "paperclip", "postgres"]);
   });
 
   it("publishes ports only on caddy (80 and 443)", () => {
@@ -121,6 +121,7 @@ describe("docker-compose.yml", () => {
     const aliases = Object.values(config.services.caddy.networks ?? {}).flatMap((network) => network?.aliases ?? []);
     assert.ok(aliases.includes("agents.example.cn"));
     assert.ok(aliases.includes("sso.example.cn"));
+    assert.ok(aliases.includes("llm.example.cn"), "Paperclip reaches the model gateway over HTTPS through caddy");
   });
 
   it("persists data in named volumes", () => {
@@ -160,5 +161,74 @@ describe("docker-compose.yml", () => {
 
   it("keeps the paperclip pid limit from the upstream compose file", () => {
     assert.equal(config.services.paperclip.pids_limit, 2048);
+  });
+
+  // specs/006-litellm-gateway-billing
+  describe("model gateway (LiteLLM)", () => {
+    it("runs the mirrored LiteLLM image with its config and hooks, models kept in its own database", () => {
+      const litellm = config.services.litellm;
+      assert.match(litellm.image, /\/litellm:1\.105\.1$/);
+      assert.deepEqual(litellm.command, ["--config", "/app/config.yaml", "--port", "4000"]);
+      const mounts = Object.fromEntries((litellm.volumes ?? []).map((v) => [v.target, v]));
+      for (const [target, file] of [["/app/config.yaml", "litellm/config.yaml"], ["/app/hooks.py", "litellm/hooks.py"]]) {
+        assert.ok(mounts[target], `mounts ${target}`);
+        assert.equal(mounts[target].read_only, true);
+        assert.ok(mounts[target].source.endsWith(file), mounts[target].source);
+      }
+      const env = litellm.environment;
+      // LiteLLM requires the master key to start with "sk-".
+      assert.equal(env.LITELLM_MASTER_KEY, "sk-value-litellm-master");
+      assert.equal(env.LITELLM_SALT_KEY, "value-litellm-salt");
+      assert.equal(env.DATABASE_URL, "postgresql://litellm:value-litellm-db@postgres:5432/litellm");
+      assert.equal(env.STORE_MODEL_IN_DB, "True");
+      assert.equal(litellm.depends_on.postgres.condition, "service_healthy");
+    });
+
+    it("keeps upstream model keys out of Paperclip (they live only in the gateway)", () => {
+      const keys = envKeys(config.services.paperclip);
+      assert.deepEqual(keys.filter((k) => /^(DEEPSEEK|KIMI|MOONSHOT|MINIMAX|OPENAI|LITELLM)_/.test(k)), []);
+    });
+
+    it("runs gateway-sync from this commit's image with read-only database access", () => {
+      const sync = config.services["gateway-sync"];
+      assert.match(sync.image, /\/paperclip-gateway-sync:2222222222222222222222222222222222222222$/);
+      const env = sync.environment;
+      assert.equal(env.LITELLM_DATABASE_URL, "postgresql://litellm:value-litellm-db@postgres:5432/litellm");
+      assert.equal(env.PAPERCLIP_DATABASE_URL, "postgresql://paperclip_readonly:value-readonly-db@postgres:5432/paperclip");
+      // Straight to Paperclip on the internal network; Origin is the public URL.
+      assert.equal(env.PAPERCLIP_URL, "http://paperclip:3100");
+      assert.equal(env.PAPERCLIP_ORIGIN, "https://agents.example.cn");
+      assert.equal(env.PAPERCLIP_GATEWAY_CONNECTION_NAME, "模型网关");
+      assert.equal(env.ACP_LAUNCHER, "/usr/local/bin/claude-agent-acp-tagged");
+      assert.ok("PAPERCLIP_SYNC_EMAIL" in env && "PAPERCLIP_SYNC_PASSWORD" in env);
+      assert.ok(!Object.keys(env).some((k) => k === "DATABASE_URL"), "never gets Paperclip's read-write database URL");
+      assert.ok(sync.healthcheck, "has a liveness healthcheck");
+    });
+
+    it("mounts the tagging launcher into Paperclip read-only", () => {
+      const mount = config.services.paperclip.volumes.find((v) => v.target === "/usr/local/bin/claude-agent-acp-tagged");
+      assert.ok(mount && mount.read_only, "launcher mounted read-only");
+      assert.ok(mount.source.endsWith("litellm/claude-agent-acp-tagged.sh"));
+    });
+
+    it("lets postgres create the gateway roles on every deploy", () => {
+      const postgres = config.services.postgres;
+      assert.equal(postgres.environment.LITELLM_DB_PASSWORD, "value-litellm-db");
+      assert.equal(postgres.environment.PAPERCLIP_READONLY_DB_PASSWORD, "value-readonly-db");
+      const ensure = postgres.volumes.find((v) => v.target === "/docker-entrypoint-initdb.d/20-ensure-roles.sh");
+      assert.ok(ensure && ensure.read_only, "mounts the idempotent role script");
+      assert.ok(ensure.source.endsWith("postgres/ensure-roles.sh"));
+    });
+
+    it("serves the gateway domain only to the admin networks and the containers", () => {
+      assert.equal(config.services.caddy.environment.LLM_DOMAIN, "llm.example.cn");
+      const caddyfile = fs.readFileSync(path.join(DEPLOY_SRC, "Caddyfile"), "utf8");
+      const start = caddyfile.indexOf("{$LLM_DOMAIN} {");
+      assert.ok(start >= 0, "has a {$LLM_DOMAIN} site");
+      const site = caddyfile.slice(start);
+      assert.match(site, /@outside_allowlist \{[^}]*not remote_ip \{\$ADMIN_ALLOWED_CIDRS\} private_ranges[^}]*\}/s);
+      assert.match(site, /respond @outside_allowlist 403/);
+      assert.match(site, /reverse_proxy litellm:4000/);
+    });
   });
 });

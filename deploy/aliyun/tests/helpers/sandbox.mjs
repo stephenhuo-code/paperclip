@@ -82,10 +82,16 @@ case "$name" in
             cat "$FAKE_STATE/pc-companies" ;;
         esac
         exit 0 ;;
+      *" exec -T gateway-sync "*)
+        if [ "${'${FAKE_GATEWAY_SYNC_READY:-1}'}" = "1" ]; then exit 0; else exit 1; fi ;;
+      *" exec -T litellm "*)
+        if [ "${'${FAKE_LITELLM_READY:-1}'}" = "1" ]; then echo "ok"; else exit 1; fi ;;
+      *" exec -T postgres bash /docker-entrypoint-initdb.d/20-ensure-roles.sh"*)
+        exit "${'${FAKE_ENSURE_ROLES_EXIT:-0}'}" ;;
       *" exec -T keycloak "*)
         if [ "${'${FAKE_KEYCLOAK_READY:-1}'}" = "1" ]; then echo "HTTP/1.1 200 OK"; else echo "HTTP/1.1 503"; fi ;;
       *" exec -T postgres pg_dump "*)
-        for db in paperclip keycloak; do case "$args" in *" $db "*) echo "DUMP:$db";; esac; done ;;
+        for db in paperclip keycloak litellm; do case "$args" in *" $db "*) echo "DUMP:$db";; esac; done ;;
       *" exec -T paperclip tar "*) echo "TAR-ARCHIVE" ;;
       *" exec -T --user node paperclip "*)
         if [ "${'${FAKE_INVITE_FAILS:-0}'}" = "1" ]; then
@@ -150,6 +156,8 @@ case "$name" in
         mkdir -p "$dest"
         echo "DUMP:paperclip" > "$dest/paperclip.dump"
         echo "DUMP:keycloak" > "$dest/keycloak.dump"
+        # Backups from before the model gateway (specs/006) have no litellm dump.
+        if [ "${'${FAKE_BACKUP_HAS_LITELLM:-1}'}" = "1" ]; then echo "DUMP:litellm" > "$dest/litellm.dump"; fi
         echo "TAR-ARCHIVE" > "$dest/paperclip-data.tgz" ;;
       esac
     fi ;;
@@ -263,6 +271,10 @@ export function sampleEnv(extra = "") {
     "PAPERCLIP_AUTH_OIDC_CLIENT_SECRET=value-oidc-secret",
     'PAPERCLIP_AUTH_OIDC_ORG_COMPANY_MAP={"acme":"5facf42d-f31f-4698-9bc9-e38f876b1579"}',
     "PAPERCLIP_AUTH_DISABLE_SIGN_UP=false",
+    "LITELLM_MASTER_KEY=value-litellm-master",
+    "LITELLM_SALT_KEY=value-litellm-salt",
+    "LITELLM_DB_PASSWORD=value-litellm-db",
+    "PAPERCLIP_READONLY_DB_PASSWORD=value-readonly-db",
     extra,
   ].join("\n");
 }
@@ -276,4 +288,8 @@ export const SECRET_VALUES = [
   "value-keycloak-db",
   "value-kc-admin",
   "value-oidc-secret",
+  "value-litellm-master",
+  "value-litellm-salt",
+  "value-litellm-db",
+  "value-readonly-db",
 ];

@@ -27,9 +27,12 @@ PAPERCLIP_IMAGE_TAG="$(cat "$STATE_DIR/current" 2>/dev/null || true)"
 export PAPERCLIP_IMAGE_TAG
 
 echo "restoring $BACKUP_DATE into $PAPERCLIP_IMAGE_TAG"
-compose stop paperclip keycloak
+compose stop paperclip keycloak gateway-sync litellm
 compose up -d postgres
-for db in paperclip keycloak; do
+# litellm.dump exists in backups taken after the model gateway (specs/006) was added.
+dbs=(paperclip keycloak)
+if [ -s "$work/litellm.dump" ]; then dbs+=(litellm); fi
+for db in "${dbs[@]}"; do
   compose exec -T postgres pg_restore -U postgres --clean --if-exists --no-owner --role="$db" -d "$db" \
     < "$work/$db.dump"
 done

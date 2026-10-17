@@ -23,6 +23,7 @@ describe("backup.sh", () => {
     const calls = box.calls();
     assert.ok(calls.some((c) => / exec -T postgres pg_dump .*-Fc.* paperclip/.test(c)), "dumps paperclip");
     assert.ok(calls.some((c) => / exec -T postgres pg_dump .*-Fc.* keycloak/.test(c)), "dumps keycloak");
+    assert.ok(calls.some((c) => / exec -T postgres pg_dump .*-Fc.* litellm/.test(c)), "dumps the model gateway (specs/006)");
     assert.ok(calls.some((c) => / exec -T paperclip tar /.test(c) && c.includes("data/storage") && c.includes("secrets")),
       "archives attachments and the secrets master key");
     const upload = calls.find((c) => c.startsWith("ossutil cp"));
@@ -83,6 +84,19 @@ describe("restore.sh", () => {
     assert.ok(download < stop && stop < restoreApp && restoreApp < restoreVolume && restoreVolume < start && start < health,
       calls.join("\n"));
     assert.ok(restoreKc > stop && restoreKc < start);
+    // specs/006: the gateway and its sync are stopped, and its database restored.
+    assert.ok(indexOf(calls, / compose .* stop .*litellm.*gateway-sync|stop .*gateway-sync.*litellm/) >= 0, "stops the gateway services");
+    const restoreGw = indexOf(calls, /pg_restore .*-d litellm/);
+    assert.ok(restoreGw > stop && restoreGw < start, "restores the litellm database");
+  });
+
+  it("restores a backup taken before the model gateway existed", () => {
+    const result = box.run("restore.sh", ["production", "2026-10-01"], {
+      FAKE_BACKUP_HAS_LITELLM: "0",
+      FAKE_HEALTH_BODY: JSON.stringify({ status: "ok", commit: "2222222222222222222222222222222222222222" }),
+    });
+    assert.equal(result.status, 0, result.output);
+    assert.ok(!box.calls().some((c) => /pg_restore .*-d litellm/.test(c)));
   });
 
   it("stops before touching anything when the download fails", () => {

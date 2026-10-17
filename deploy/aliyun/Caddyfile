@@ -27,3 +27,14 @@
 	respond @admin_outside_allowlist 403
 	reverse_proxy keycloak:8080
 }
+
+# Model gateway (LiteLLM admin UI and API, specs/006-litellm-gateway-billing).
+# Only the admin networks and the containers on this host (Paperclip) may use it.
+{$LLM_DOMAIN} {
+	{$CADDY_TLS_DIRECTIVE}
+	@outside_allowlist {
+		not remote_ip {$ADMIN_ALLOWED_CIDRS} private_ranges
+	}
+	respond @outside_allowlist 403
+	reverse_proxy litellm:4000
+}

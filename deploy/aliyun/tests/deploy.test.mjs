@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { createSandbox, sampleEnv, SECRET_VALUES } from "./helpers/sandbox.mjs";
 
 const OLD = "1111111111111111111111111111111111111111";
@@ -85,6 +86,51 @@ describe("deploy.sh", () => {
     assert.ok(!box.calls().some((call) => call.startsWith("curl") && call.includes("--cacert")));
     box.run("deploy.sh", ["production", NEW], { FAKE_HEALTH_BODY: healthy(NEW), DEPLOY_HEALTH_CA_FILE: "/tmp/root.crt" });
     assert.ok(box.calls().some((call) => call.startsWith("curl") && call.includes("--cacert /tmp/root.crt")));
+  });
+
+  // specs/006-litellm-gateway-billing
+  const GATEWAY_SECRETS = ["LITELLM_MASTER_KEY", "LITELLM_SALT_KEY", "LITELLM_DB_PASSWORD", "PAPERCLIP_READONLY_DB_PASSWORD"];
+  const withoutGatewaySecrets = () => sampleEnv().split("\n").filter((l) => !GATEWAY_SECRETS.some((k) => l.startsWith(`${k}=`))).join("\n");
+
+  it("creates the gateway database roles after postgres starts and before the stack starts", () => {
+    const result = box.run("deploy.sh", ["production", NEW], { FAKE_HEALTH_BODY: healthy(NEW) });
+    assert.equal(result.status, 0, result.output);
+    const calls = box.calls();
+    const ensure = calls.findIndex((c) => c.includes("exec -T postgres bash /docker-entrypoint-initdb.d/20-ensure-roles.sh"));
+    const postgresUp = calls.findIndex((c) => c.includes(" up -d postgres"));
+    const stackUp = calls.findIndex((c) => c.includes(" up -d --remove-orphans"));
+    assert.ok(ensure > postgresUp && ensure < stackUp, `order: postgres ${postgresUp}, roles ${ensure}, stack ${stackUp}`);
+  });
+
+  it("rolls back when creating the gateway roles fails", () => {
+    const result = box.run("deploy.sh", ["production", NEW], { FAKE_HEALTH_BODY: healthy(NEW), FAKE_ENSURE_ROLES_EXIT: "1" });
+    assert.equal(result.status, 2, result.output);
+    assert.equal(box.readState("current"), OLD);
+  });
+
+  it("generates missing gateway secrets once and never changes existing ones", () => {
+    box.writeEnv(withoutGatewaySecrets());
+    const first = box.run("deploy.sh", ["production", NEW], { FAKE_HEALTH_BODY: healthy(NEW) });
+    assert.equal(first.status, 0, first.output);
+    const env = box.readEnv();
+    for (const key of GATEWAY_SECRETS) assert.match(env, new RegExp(`^${key}=generated-secret-\\d+$`, "m"), key);
+    assert.match(env, /^BETTER_AUTH_SECRET=value-better-auth$/m, "keeps the other lines");
+    assert.equal(fs.statSync(`${box.root}/.env`).mode & 0o777, 0o600);
+    assert.ok(!first.output.includes("generated-secret-"), "never prints generated values");
+    box.run("deploy.sh", ["production", NEW], { FAKE_HEALTH_BODY: healthy(NEW) });
+    assert.equal(box.readEnv(), env, "a second deploy changes nothing (the salt key must never change)");
+  });
+
+  it("rolls back when the model gateway is not ready", () => {
+    const result = box.run("deploy.sh", ["production", NEW], { FAKE_HEALTH_BODY: healthy(NEW), FAKE_LITELLM_READY: "0" });
+    assert.equal(result.status, 2, result.output);
+    assert.equal(box.readState("current"), OLD);
+  });
+
+  it("rolls back when gateway-sync is not running its loop", () => {
+    const result = box.run("deploy.sh", ["production", NEW], { FAKE_HEALTH_BODY: healthy(NEW), FAKE_GATEWAY_SYNC_READY: "0" });
+    assert.equal(result.status, 2, result.output);
+    assert.equal(box.readState("current"), OLD);
   });
 
   it("rejects an unknown environment", () => {

@@ -20,7 +20,9 @@
                      ┌──────────────── ECS（单台） ────────────────┐
   用户浏览器 ──443──▶│ caddy ──APP_DOMAIN──▶ paperclip ──▶ postgres │
                      │   │                     └─ 数字员工子进程      │
-                     │   └──SSO_DOMAIN──▶ keycloak ──▶ postgres     │
+                     │   ├──SSO_DOMAIN──▶ keycloak ──▶ postgres     │
+                     │   └──LLM_DOMAIN──▶ litellm ──▶ 上游模型服务  │
+                     │ gateway-sync：网关花费按运行写回 paperclip   │
                      │ keycloak-config（每次部署运行一次）──▶ keycloak │
                      │ cron 03:00 ──▶ backup.sh ──▶ OSS              │
                      └──────────────────────────────────────────────┘
@@ -32,6 +34,8 @@
 | `paperclip` | Paperclip 平台；数字员工作为子进程在此运行 | 无 |
 | `keycloak` | 单点登录（Keycloak 26.8.0） | 无 |
 | `postgres` | `paperclip`、`keycloak` 两个库，各自独立账号 | 无 |
+| `litellm` | 模型网关（LiteLLM）：所有模型统一接入，上游 Key 与单价在其管理界面设置；拒绝未设单价的模型；管理界面与接口仅管理员网段和容器内网可访问（specs/006） | 无（经 Caddy 的 `LLM_DOMAIN`） |
+| `gateway-sync` | 每 30 秒把网关花费按运行写回 Paperclip（agent / 任务 / 项目），并为选了"模型网关"连接、ACP 启动命令为空的 Claude Code agent 补上带运行标识的启动命令 | 无 |
 | `keycloak-config` | 一次性任务：运行 `keycloak/provision.sh` 初始化 realm、组织、客户端 | 无 |
 
 文件：
@@ -156,6 +160,16 @@ ACR_USERNAME=<ACR 用户名> ACR_PASSWORD=<ACR 密码> ./scripts/bootstrap.sh pr
 - **手动回滚**：在服务器上执行 `/opt/paperclip/bin/remote-deploy.sh production <上一个 sha>`（见 `/opt/paperclip/state/previous`）。
 - 数据库迁移在 Paperclip 启动时自动执行。包含 specs/002 新增的 `agents.created_by_user_id`：升级时自动加列，并从活动日志为已有 agent 补上创建人。
 - `deploy.sh` 发现 `/opt/paperclip/.env` 中有 `ANTHROPIC_` 开头的变量会直接拒绝发布（见[配置数字员工](#配置数字员工)）。
+
+## 模型网关
+
+所有模型经 LiteLLM 统一接入并计费，花费写回 Paperclip 后由公司 / agent / 项目预算控制（[specs/006](../../specs/006-litellm-gateway-billing/spec.md)，验证记录见 `experiments/litellm-verify/REPORT.md`）。操作步骤见[手册第二章](docs/manual.md)。
+
+- **DNS**：首次启用前在阿里云 DNS 添加 `LLM_DOMAIN`（`environments/production.env`）解析到 ECS；Caddy 自动签发证书。
+- **密钥**：`LITELLM_MASTER_KEY`、`LITELLM_SALT_KEY`、`LITELLM_DB_PASSWORD`、`PAPERCLIP_READONLY_DB_PASSWORD` 在首次发布时自动生成到 `/opt/paperclip/.env`。**`LITELLM_SALT_KEY` 永远不要修改**，否则网关中保存的上游 Key 无法解密。
+- **写回账号**：在 `.env` 中设置 `PAPERCLIP_SYNC_EMAIL`、`PAPERCLIP_SYNC_PASSWORD`（应急管理员）并重新发布；未设置时网关照常工作，花费不写回。
+- **启动脚本**：`litellm/claude-agent-acp-tagged.sh` 挂载到 paperclip 容器，给每次模型调用加上运行和任务标识。
+- **备份**：`litellm` 库随每日备份一起导出、恢复。
 
 ## 备份与恢复
 

@@ -63,6 +63,18 @@ keycloak_ready() {
   [[ "$status" == *" 200"* ]]
 }
 
+# The model gateway answers its liveness check inside its container.
+litellm_ready() {
+  compose exec -T litellm python -c \
+    'import urllib.request; urllib.request.urlopen("http://127.0.0.1:4000/health/liveliness", timeout=5)' \
+    </dev/null >/dev/null 2>&1
+}
+
+# gateway-sync's loop wrote its heartbeat recently (gateway-sync/health.mjs).
+gateway_sync_ready() {
+  compose exec -T gateway-sync node /app/health.mjs </dev/null >/dev/null 2>&1
+}
+
 paperclip_ready() {
   local expected_commit="$1" body
   local -a ca_args=()
@@ -76,11 +88,11 @@ paperclip_ready() {
 }
 
 # Usage: wait_healthy <commit>. Waits until Paperclip reports the commit and
-# Keycloak is ready, or DEPLOY_HEALTH_TIMEOUT_SECONDS passes.
+# Keycloak and the model gateway are ready, or DEPLOY_HEALTH_TIMEOUT_SECONDS passes.
 wait_healthy() {
   local expected_commit="$1" deadline=$((SECONDS + DEPLOY_HEALTH_TIMEOUT_SECONDS))
   while true; do
-    if paperclip_ready "$expected_commit" && keycloak_ready; then
+    if paperclip_ready "$expected_commit" && keycloak_ready && litellm_ready && gateway_sync_ready; then
       return 0
     fi
     if [ "$SECONDS" -ge "$deadline" ]; then

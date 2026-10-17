@@ -129,3 +129,77 @@ Paperclip 登录页和 Keycloak 登录页显示的名称与 logo 由部署配置
 3. 提交并发布。发布后用无痕窗口打开 `https://agent.ai-datum.net` 确认；浏览器可能缓存旧 logo，强制刷新即可。
 
 `PAPERCLIP_BRAND_NAME` 留空时两个登录页恢复 Paperclip 和 Keycloak 的默认样子。
+
+---
+
+## 第二章 模型网关：统一接入与计费
+
+所有模型都经过模型网关（LiteLLM）接入：上游 Key 只放在网关里，单价在网关里设置；每次调用的花费按运行写回 Paperclip，记到 agent、任务和项目上，由 Paperclip 的预算控制（specs/006）。
+
+| 地址 | 用途 |
+|---|---|
+| `https://llm.ai-datum.net/ui` | 网关管理界面（只允许管理员网段访问） |
+| `https://agent.ai-datum.net` | Paperclip，照常使用 |
+
+### 2.1 第一次登录网关
+
+1. 打开 `https://llm.ai-datum.net/ui`。用户名 `admin`，密码为服务器 `/opt/paperclip/.env` 中 `LITELLM_MASTER_KEY` 的值**前面加 `sk-`**。
+2. 登录后到 **Internal Users** 新建一个自己的管理员账号（角色选 Admin），以后用它登录。
+
+### 2.2 添加模型和单价
+
+1. **Models + Endpoints → Add Model**：Provider 选 **Anthropic**，填模型名、API Base、上游 Key：
+
+   | 模型 | 模型名（Paperclip 中选择的名字） | API Base |
+   |---|---|---|
+   | DeepSeek（按量） | `deepseek-chat` | `https://api.deepseek.com/anthropic` |
+   | Kimi 会员 | `kimi-for-coding` | `https://api.kimi.com/coding` |
+   | MiniMax 编程套餐 | `MiniMax-M3`（以套餐为准） | `https://api.minimaxi.com/anthropic` |
+
+2. 打开模型详情 → **Model Settings → Pricing**，填四个单价（美元 / 百万 token）：输入、输出、缓存命中、缓存写入。
+   - **缓存命中、缓存写入一定要填**：留空会按输入单价计费，算多。
+   - 会员 / 套餐类（如 Kimi 会员）填"等价单价"，用于预算。
+   - **没有填单价的模型不能调用**：agent 运行会失败并提示"模型未设单价"。
+3. 改单价立即生效，只影响之后的调用。
+
+### 2.3 在 Paperclip 中建网关连接（只做一次）
+
+1. 网关 **Virtual Keys → Create New Key**，名称如 `paperclip`，不限模型；复制 Key（只显示一次）。
+2. Paperclip 新建 agent 到 **Connect a model** 一步，点 **Use API key instead**，选自定义网关（Messages API / Anthropic 兼容）：
+   - Base URL：`https://llm.ai-datum.net`
+   - API Key：上一步的网关 Key
+   - 模型：填网关中的模型名（如 `deepseek-chat`、`kimi-for-coding`）
+   - 访问范围：**所有 agent**
+3. 把这个连接命名为 **模型网关**（名称必须一致，写回程序靠它识别）。
+
+### 2.4 让 agent 使用网关
+
+- 新建或修改 agent：运行方式选 **Claude Code**，模型连接选 **模型网关**，选模型。**高级 → ACP server command 留空**，1 分钟内会自动补上带运行标识的启动命令。
+- 已经填写了 ACP server command、选了别的连接、或不是 Claude Code 的 agent **不会被修改**，它们的花费也不经网关、不会写回。
+- 现有直连的 agent（如 CFO、AI 情报员）：把模型连接改为 **模型网关** 即可纳入。
+
+### 2.5 写回账号（只做一次）
+
+写回程序用 Paperclip 应急管理员登录，写入费用。在服务器 `/opt/paperclip/.env` 中加入：
+
+```
+PAPERCLIP_SYNC_EMAIL=63592990@qq.com
+PAPERCLIP_SYNC_PASSWORD=<应急密码>
+```
+
+然后重新发布一次。未设置时，网关照常工作，但花费不会写回 Paperclip。
+
+### 2.6 查看花费与预算
+
+- Paperclip **Audit → Costs**：服务商显示为 `litellm`，按 agent / 项目汇总；**Budgets** 中的公司 / agent / 项目预算按这些花费预警和暂停。
+- 花费在调用后 1 分钟左右写回。
+- 网关界面 **Usage / Logs** 可看到每一次调用。没有运行标识的调用（如新建 agent 时的连接检查）只在网关里可见，不写回 Paperclip；写回程序每小时在日志中汇总这部分"未归属"金额，并列出"不经网关"的 agent。
+
+### 2.7 常见问题
+
+| 现象 | 处理 |
+|---|---|
+| agent 运行报"模型未设单价" | 到网关为该模型填写单价 |
+| agent 运行报连接失败 | 网关是否在运行（Paperclip 不会改为直连） |
+| 费用页看不到网关花费 | `.env` 是否设置了写回账号；连接名称是否为"模型网关" |
+| 上游 Key 更换 | 网关模型详情 → **Update API Key**，Paperclip 不用改 |

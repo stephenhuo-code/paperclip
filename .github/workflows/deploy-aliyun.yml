@@ -39,7 +39,7 @@ jobs:
         run: |
           file="deploy/aliyun/environments/${DEPLOY_ENV}.env"
           test -f "$file"
-          grep -E '^(ALIYUN_REGION|ECS_INSTANCE_ID|ACR_REGISTRY|ACR_NAMESPACE|KEYCLOAK_VERSION|POSTGRES_VERSION|CADDY_VERSION)=' "$file" >> "$GITHUB_ENV"
+          grep -E '^(ALIYUN_REGION|ECS_INSTANCE_ID|ACR_REGISTRY|ACR_NAMESPACE|KEYCLOAK_VERSION|POSTGRES_VERSION|CADDY_VERSION|LITELLM_VERSION|LITELLM_IMAGE)=' "$file" >> "$GITHUB_ENV"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -82,6 +82,17 @@ jobs:
           sbom: false
           tags: ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/paperclip-deploy:${{ github.sha }}
 
+      - name: Build and push gateway-sync
+        uses: docker/build-push-action@v6
+        with:
+          context: deploy/aliyun/gateway-sync
+          platforms: linux/amd64
+          push: true
+          # ACR personal edition rejects attestation manifests (application/vnd.oci.empty.v1+json).
+          provenance: false
+          sbom: false
+          tags: ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/paperclip-gateway-sync:${{ github.sha }}
+
       - name: Mirror base images into ACR
         run: |
           mirror() {
@@ -99,6 +110,7 @@ jobs:
           mirror "quay.io/keycloak/keycloak:${KEYCLOAK_VERSION}" "keycloak:${KEYCLOAK_VERSION}"
           mirror "docker.io/library/postgres:${POSTGRES_VERSION}" "postgres:${POSTGRES_VERSION}"
           mirror "docker.io/library/caddy:${CADDY_VERSION}" "caddy:${CADDY_VERSION}"
+          mirror "${LITELLM_IMAGE}" "litellm:${LITELLM_VERSION}"
 
       - name: Install aliyun CLI
         run: |
