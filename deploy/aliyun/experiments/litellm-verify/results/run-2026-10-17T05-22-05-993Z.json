@@ -1,0 +1,340 @@
+{
+  "startedAt": "2026-10-17T05:22:05.993Z",
+  "litellmVersion": "1.105.1",
+  "claudeVersion": "2.1.300 (Claude Code)",
+  "checks": {
+    "headersAndTags": {
+      "capture": {
+        "claudeOk": true,
+        "upstreamUserAgents": [
+          "litellm/1.105.1"
+        ],
+        "upstreamGotRunIdHeader": false,
+        "spendRows": [
+          {
+            "model": "capture",
+            "startTime": "2026-10-17T05:22:06.257000Z",
+            "spend": 0.0029,
+            "tokens": {
+              "prompt": 6300,
+              "plainInput": 1000,
+              "cacheRead": 5000,
+              "cacheWrite": 300,
+              "output": 200
+            },
+            "expected": 0.0029,
+            "cacheAtInputRate": 0.0071,
+            "match": true,
+            "tags": [
+              "project-demo",
+              "User-Agent: claude-cli",
+              "User-Agent: claude-cli/2.1.300 (external, sdk-cli)"
+            ],
+            "userAgent": "claude-cli/2.1.300 (external, sdk-cli)"
+          }
+        ]
+      },
+      "capture-fwd": {
+        "claudeOk": true,
+        "upstreamUserAgents": [
+          "litellm/1.105.1"
+        ],
+        "upstreamGotRunIdHeader": true,
+        "spendRows": [
+          {
+            "model": "capture-fwd",
+            "startTime": "2026-10-17T05:22:09.517000Z",
+            "spend": 0.0029,
+            "tokens": {
+              "prompt": 6300,
+              "plainInput": 1000,
+              "cacheRead": 5000,
+              "cacheWrite": 300,
+              "output": 200
+            },
+            "expected": 0.0029,
+            "cacheAtInputRate": 0.0071,
+            "match": true,
+            "tags": [
+              "project-demo",
+              "User-Agent: claude-cli",
+              "User-Agent: claude-cli/2.1.300 (external, sdk-cli)"
+            ],
+            "userAgent": "claude-cli/2.1.300 (external, sdk-cli)"
+          }
+        ]
+      }
+    },
+    "budget": {
+      "maxBudget": 0.005,
+      "perCall": 0.0029,
+      "statuses": [
+        200,
+        200,
+        422
+      ],
+      "blockedThirdCall": true
+    },
+    "realModels": {
+      "deepseek-chat": {
+        "kind": "pay-as-you-go",
+        "status": "OK",
+        "runs": [
+          {
+            "ok": true,
+            "isError": false,
+            "result": "OK",
+            "claudeReportedCostUsd": 0.078225,
+            "claudeTokens": {
+              "input": 15640,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 1
+            }
+          },
+          {
+            "ok": true,
+            "isError": false,
+            "result": "OK",
+            "claudeReportedCostUsd": 0.07823,
+            "claudeTokens": {
+              "input": 15641,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 1
+            }
+          }
+        ],
+        "spendRows": [
+          {
+            "model": "deepseek-chat",
+            "startTime": "2026-10-17T05:23:02.069000Z",
+            "spend": 0.015645,
+            "tokens": {
+              "prompt": 15641,
+              "plainInput": 15641,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 1
+            },
+            "expected": 0.015645,
+            "cacheAtInputRate": 0.015645,
+            "match": true,
+            "tags": [
+              "User-Agent: claude-cli",
+              "User-Agent: claude-cli/2.1.300 (external, sdk-cli)"
+            ],
+            "userAgent": "claude-cli/2.1.300 (external, sdk-cli)"
+          },
+          {
+            "model": "deepseek-chat",
+            "startTime": "2026-10-17T05:23:01.180000Z",
+            "spend": 0.015644,
+            "tokens": {
+              "prompt": 15640,
+              "plainInput": 15640,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "output": 1
+            },
+            "expected": 0.015644,
+            "cacheAtInputRate": 0.015644,
+            "match": true,
+            "tags": [
+              "User-Agent: claude-cli",
+              "User-Agent: claude-cli/2.1.300 (external, sdk-cli)"
+            ],
+            "userAgent": "claude-cli/2.1.300 (external, sdk-cli)"
+          }
+        ],
+        "claudeTotal": {
+          "input": 31281,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "output": 2
+        },
+        "litellmTotal": {
+          "plainInput": 31281,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "output": 2
+        },
+        "allRowsPricedAsConfigured": true,
+        "cacheTokensSeen": false
+      },
+      "kimi-for-coding": {
+        "kind": "Kimi membership",
+        "status": "OK",
+        "runs": [
+          {
+            "ok": true,
+            "isError": false,
+            "result": "OK",
+            "claudeReportedCostUsd": 0.0219,
+            "claudeTokens": {
+              "input": 2993,
+              "cacheRead": 11520,
+              "cacheWrite": 0,
+              "output": 47
+            }
+          },
+          {
+            "ok": true,
+            "isError": false,
+            "result": "OK",
+            "claudeReportedCostUsd": 0.02153,
+            "claudeTokens": {
+              "input": 2994,
+              "cacheRead": 11520,
+              "cacheWrite": 0,
+              "output": 32
+            }
+          }
+        ],
+        "spendRows": [
+          {
+            "model": "kimi-for-coding",
+            "startTime": "2026-10-17T05:23:10.078000Z",
+            "spend": 0.004274,
+            "tokens": {
+              "prompt": 14514,
+              "plainInput": 2994,
+              "cacheRead": 11520,
+              "cacheWrite": 0,
+              "output": 32
+            },
+            "expected": 0.004274,
+            "cacheAtInputRate": 0.014642,
+            "match": true,
+            "tags": [
+              "User-Agent: claude-cli",
+              "User-Agent: claude-cli/2.1.300 (external, sdk-cli)"
+            ],
+            "userAgent": "claude-cli/2.1.300 (external, sdk-cli)"
+          },
+          {
+            "model": "kimi-for-coding",
+            "startTime": "2026-10-17T05:23:07.495000Z",
+            "spend": 0.004333,
+            "tokens": {
+              "prompt": 14513,
+              "plainInput": 2993,
+              "cacheRead": 11520,
+              "cacheWrite": 0,
+              "output": 47
+            },
+            "expected": 0.004333,
+            "cacheAtInputRate": 0.014701,
+            "match": true,
+            "tags": [
+              "User-Agent: claude-cli",
+              "User-Agent: claude-cli/2.1.300 (external, sdk-cli)"
+            ],
+            "userAgent": "claude-cli/2.1.300 (external, sdk-cli)"
+          }
+        ],
+        "claudeTotal": {
+          "input": 5987,
+          "cacheRead": 23040,
+          "cacheWrite": 0,
+          "output": 79
+        },
+        "litellmTotal": {
+          "plainInput": 5987,
+          "cacheRead": 23040,
+          "cacheWrite": 0,
+          "output": 79
+        },
+        "allRowsPricedAsConfigured": true,
+        "cacheTokensSeen": true
+      },
+      "minimax": {
+        "kind": "MiniMax coding plan",
+        "status": "OK",
+        "runs": [
+          {
+            "ok": true,
+            "isError": false,
+            "result": "OK",
+            "claudeReportedCostUsd": 0.076884,
+            "claudeTokens": {
+              "input": 15354,
+              "cacheRead": 128,
+              "cacheWrite": 0,
+              "output": 2
+            }
+          },
+          {
+            "ok": true,
+            "isError": false,
+            "result": "OK",
+            "claudeReportedCostUsd": 0.07638899999999998,
+            "claudeTokens": {
+              "input": 15255,
+              "cacheRead": 128,
+              "cacheWrite": 0,
+              "output": 2
+            }
+          }
+        ],
+        "spendRows": [
+          {
+            "model": "minimax",
+            "startTime": "2026-10-17T05:23:22.507000Z",
+            "spend": 0.0152758,
+            "tokens": {
+              "prompt": 15383,
+              "plainInput": 15255,
+              "cacheRead": 128,
+              "cacheWrite": 0,
+              "output": 2
+            },
+            "expected": 0.0152758,
+            "cacheAtInputRate": 0.015391,
+            "match": true,
+            "tags": [
+              "User-Agent: claude-cli",
+              "User-Agent: claude-cli/2.1.300 (external, sdk-cli)"
+            ],
+            "userAgent": "claude-cli/2.1.300 (external, sdk-cli)"
+          },
+          {
+            "model": "minimax",
+            "startTime": "2026-10-17T05:23:21.142000Z",
+            "spend": 0.0153748,
+            "tokens": {
+              "prompt": 15482,
+              "plainInput": 15354,
+              "cacheRead": 128,
+              "cacheWrite": 0,
+              "output": 2
+            },
+            "expected": 0.0153748,
+            "cacheAtInputRate": 0.01549,
+            "match": true,
+            "tags": [
+              "User-Agent: claude-cli",
+              "User-Agent: claude-cli/2.1.300 (external, sdk-cli)"
+            ],
+            "userAgent": "claude-cli/2.1.300 (external, sdk-cli)"
+          }
+        ],
+        "claudeTotal": {
+          "input": 30609,
+          "cacheRead": 256,
+          "cacheWrite": 0,
+          "output": 4
+        },
+        "litellmTotal": {
+          "plainInput": 30609,
+          "cacheRead": 256,
+          "cacheWrite": 0,
+          "output": 4
+        },
+        "allRowsPricedAsConfigured": true,
+        "cacheTokensSeen": true
+      }
+    }
+  },
+  "finishedAt": "2026-10-17T05:23:31.764Z"
+}

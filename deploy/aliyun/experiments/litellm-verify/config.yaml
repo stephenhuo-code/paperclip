@@ -1,0 +1,62 @@
+# LiteLLM config for the verification run.
+# Prices are TEST prices (USD per token), chosen so each token kind has a
+# distinct rate: input $1/M, cache read $0.10/M, cache write $2/M, output $4/M.
+# They are not real list prices; the point is to check which rate LiteLLM
+# applies to which tokens.
+
+x-test-prices: &test-prices
+  input_cost_per_token: 0.000001
+  cache_read_input_token_cost: 0.0000001
+  cache_creation_input_token_cost: 0.000002
+  output_cost_per_token: 0.000004
+
+model_list:
+  # Pay-as-you-go
+  - model_name: deepseek-chat
+    litellm_params:
+      model: anthropic/deepseek-chat
+      api_base: https://api.deepseek.com/anthropic
+      api_key: os.environ/DEEPSEEK_API_KEY
+      <<: *test-prices
+
+  # Kimi membership (Kimi Code console key)
+  - model_name: kimi-for-coding
+    litellm_params:
+      model: anthropic/kimi-for-coding
+      api_base: https://api.kimi.com/coding
+      api_key: os.environ/KIMI_CODING_API_KEY
+      <<: *test-prices
+
+  # MiniMax coding plan key (change the model id if your plan uses another)
+  - model_name: minimax
+    litellm_params:
+      model: anthropic/MiniMax-M3
+      api_base: https://api.minimaxi.com/anthropic
+      api_key: os.environ/MINIMAX_CODING_API_KEY
+      <<: *test-prices
+
+  # Fake upstream, default header handling
+  - model_name: capture
+    litellm_params:
+      model: anthropic/capture
+      api_base: http://capture:8080
+      api_key: dummy-capture-key
+      <<: *test-prices
+
+  # Fake upstream with client header forwarding turned on for this model
+  - model_name: capture-fwd
+    litellm_params:
+      model: anthropic/capture
+      api_base: http://capture:8080
+      api_key: dummy-capture-key
+      <<: *test-prices
+
+litellm_settings:
+  # Send the caller's own User-Agent upstream (see forward_user_agent.py).
+  callbacks: forward_user_agent.proxy_handler_instance
+  model_group_settings:
+    forward_client_headers_to_llm_api:
+      - capture-fwd
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

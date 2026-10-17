@@ -1,0 +1,46 @@
+# LiteLLM verification stack (local only; see README.md).
+# Upstream keys come from ~/paperclip-local/litellm/keys.env, never this repo.
+name: litellm-verify
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: litellm
+      POSTGRES_DB: litellm
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 3s
+      retries: 20
+
+  # Fake Anthropic upstream: records the headers LiteLLM sends and returns a
+  # fixed usage, so header forwarding, pricing and budgets can be checked
+  # without spending real tokens.
+  capture:
+    image: node:24-alpine
+    command: ["node", "/app/capture.mjs"]
+    volumes:
+      - ./capture.mjs:/app/capture.mjs:ro
+      - ./results:/data
+
+  litellm:
+    # main-stable as of 2026-10-13 (LiteLLM 1.105.1)
+    image: ghcr.io/berriai/litellm@sha256:b7b9e2c306343721802253d0dd9436b9634a2eb4e14da7c7cf06c5c7b7530802
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    env_file:
+      - ${LITELLM_SECRETS_DIR:?}/keys.env
+      - ${LITELLM_SECRETS_DIR:?}/master.env
+    environment:
+      DATABASE_URL: postgresql://litellm:litellm@db:5432/litellm
+      STORE_MODEL_IN_DB: "True"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./forward_user_agent.py:/app/forward_user_agent.py:ro
+    ports:
+      - "127.0.0.1:4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+      capture:
+        condition: service_started

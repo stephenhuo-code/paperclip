@@ -1,0 +1,64 @@
+{
+  "at": "2026-10-17T08:33:10.926Z",
+  "agents": [
+    {
+      "agent": "litellm-deepseek-chat-10170529",
+      "rows": 12,
+      "tagged": 12,
+      "untagged": 0,
+      "runs": {
+        "fb6422cb-ffc2-4633-985d-fc81d01f724d": {
+          "projectId": "e7b965e4-9a0c-4787-ba82-d44fca4bfb45",
+          "rows": 7,
+          "usd": 0.0444726
+        },
+        "9e8d1cc8-1071-47fa-b10b-ddfbcf33ee01": {
+          "projectId": "fe151942-a49d-4818-ac1d-995daf42a23c",
+          "rows": 5,
+          "usd": 0.0370604
+        }
+      },
+      "posted": 12,
+      "replayed": 0
+    },
+    {
+      "agent": "litellm-kimi-for-coding-10170529",
+      "rows": 18,
+      "tagged": 18,
+      "untagged": 0,
+      "runs": {
+        "0be12590-43ee-4802-961b-9c11a1f58c24": {
+          "projectId": "fe151942-a49d-4818-ac1d-995daf42a23c",
+          "rows": 11,
+          "usd": 0.06315459999999999
+        },
+        "d6a4dd80-219d-4a5e-b04a-7ccb46813969": {
+          "projectId": "e7b965e4-9a0c-4787-ba82-d44fca4bfb45",
+          "rows": 7,
+          "usd": 0.065239
+        }
+      },
+      "posted": 18,
+      "replayed": 0
+    }
+  ],
+  "budget": {
+    "projectPausedAt": [
+      "2026-10-17 08:33:14.905+00",
+      "budget"
+    ],
+    "projectSpendCents": "10.9711600",
+    "incidents": [
+      [
+        "soft",
+        "resolved",
+        "4.4472600"
+      ],
+      [
+        "hard",
+        "open",
+        "5.0526400"
+      ]
+    ]
+  }
+}

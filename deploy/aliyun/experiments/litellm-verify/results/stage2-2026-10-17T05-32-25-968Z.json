@@ -1,0 +1,181 @@
+{
+  "at": "2026-10-17T05:32:25.968Z",
+  "agents": [
+    {
+      "agent": "litellm-deepseek-chat-10170529",
+      "model": "deepseek-chat",
+      "runs": 4,
+      "overlappingRuns": 4,
+      "litellmRows": 19,
+      "matched": 0,
+      "ambiguous": 13,
+      "unmatched": 6,
+      "byProject": {
+        "e7b965e4-9a0c-4787-ba82-d44fca4bfb45": 0,
+        "fe151942-a49d-4818-ac1d-995daf42a23c": 0
+      },
+      "perRun": {
+        "1893ddb1-77e7-459f-af4c-7e7ceb2ec4a3": {
+          "projectId": "e7b965e4-9a0c-4787-ba82-d44fca4bfb45",
+          "status": "failed",
+          "spend": 0,
+          "rows": 0,
+          "litellmTokens": {
+            "prompt": 0,
+            "cacheRead": 0,
+            "output": 0
+          },
+          "paperclip": {
+            "input": 0,
+            "cached": 0,
+            "output": 0,
+            "cents": 0,
+            "billing": "subscription_included"
+          }
+        },
+        "05bf3c87-bbd3-41a4-8a53-a40dc55a071d": {
+          "projectId": "fe151942-a49d-4818-ac1d-995daf42a23c",
+          "status": "failed",
+          "spend": 0,
+          "rows": 0,
+          "litellmTokens": {
+            "prompt": 0,
+            "cacheRead": 0,
+            "output": 0
+          },
+          "paperclip": {
+            "input": 0,
+            "cached": 0,
+            "output": 0,
+            "cents": 0,
+            "billing": "subscription_included"
+          }
+        },
+        "6fe71773-3f2f-4683-89d0-990343d2bd6f": {
+          "projectId": "e7b965e4-9a0c-4787-ba82-d44fca4bfb45",
+          "status": "succeeded",
+          "spend": 0,
+          "rows": 0,
+          "litellmTokens": {
+            "prompt": 0,
+            "cacheRead": 0,
+            "output": 0
+          },
+          "paperclip": {
+            "input": 28396,
+            "cached": 81664,
+            "output": 601,
+            "cents": 0,
+            "billing": "subscription_included"
+          }
+        },
+        "823864d9-afbc-47dd-9304-6d4a68080327": {
+          "projectId": "fe151942-a49d-4818-ac1d-995daf42a23c",
+          "status": "succeeded",
+          "spend": 0,
+          "rows": 0,
+          "litellmTokens": {
+            "prompt": 0,
+            "cacheRead": 0,
+            "output": 0
+          },
+          "paperclip": {
+            "input": 27758,
+            "cached": 108928,
+            "output": 837,
+            "cents": 0,
+            "billing": "subscription_included"
+          }
+        }
+      }
+    },
+    {
+      "agent": "litellm-kimi-for-coding-10170529",
+      "model": "kimi-for-coding",
+      "runs": 4,
+      "overlappingRuns": 4,
+      "litellmRows": 24,
+      "matched": 8,
+      "ambiguous": 9,
+      "unmatched": 7,
+      "byProject": {
+        "e7b965e4-9a0c-4787-ba82-d44fca4bfb45": 0.043146,
+        "fe151942-a49d-4818-ac1d-995daf42a23c": 0
+      },
+      "perRun": {
+        "b934a928-9eca-4e9e-ba2d-9a05fc9a3854": {
+          "projectId": "e7b965e4-9a0c-4787-ba82-d44fca4bfb45",
+          "status": "failed",
+          "spend": 0,
+          "rows": 0,
+          "litellmTokens": {
+            "prompt": 0,
+            "cacheRead": 0,
+            "output": 0
+          },
+          "paperclip": {
+            "input": 0,
+            "cached": 0,
+            "output": 0,
+            "cents": 0,
+            "billing": "subscription_included"
+          }
+        },
+        "b3bd3066-bdbc-4b2b-b674-138a44326826": {
+          "projectId": "fe151942-a49d-4818-ac1d-995daf42a23c",
+          "status": "failed",
+          "spend": 0,
+          "rows": 0,
+          "litellmTokens": {
+            "prompt": 0,
+            "cacheRead": 0,
+            "output": 0
+          },
+          "paperclip": {
+            "input": 0,
+            "cached": 0,
+            "output": 0,
+            "cents": 0,
+            "billing": "subscription_included"
+          }
+        },
+        "099206d2-f8f5-4634-8b4d-c5ead9ec75e3": {
+          "projectId": "fe151942-a49d-4818-ac1d-995daf42a23c",
+          "status": "succeeded",
+          "spend": 0,
+          "rows": 0,
+          "litellmTokens": {
+            "prompt": 0,
+            "cacheRead": 0,
+            "output": 0
+          },
+          "paperclip": {
+            "input": 41733,
+            "cached": 106752,
+            "output": 915,
+            "cents": 0,
+            "billing": "subscription_included"
+          }
+        },
+        "68e1e011-9078-4d3f-85cc-51070e38bb32": {
+          "projectId": "e7b965e4-9a0c-4787-ba82-d44fca4bfb45",
+          "status": "succeeded",
+          "spend": 0.043146,
+          "rows": 8,
+          "litellmTokens": {
+            "prompt": 307370,
+            "cacheRead": 302080,
+            "output": 1912
+          },
+          "paperclip": {
+            "input": 45774,
+            "cached": 367360,
+            "output": 2874,
+            "cents": 0,
+            "billing": "subscription_included"
+          }
+        }
+      }
+    }
+  ]
+}

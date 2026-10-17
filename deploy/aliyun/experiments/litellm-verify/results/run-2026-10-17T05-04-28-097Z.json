@@ -1,0 +1,94 @@
+{
+  "startedAt": "2026-10-17T05:04:28.097Z",
+  "litellmVersion": null,
+  "claudeVersion": "2.1.300 (Claude Code)",
+  "checks": {
+    "headersAndTags": {
+      "capture": {
+        "claudeOk": true,
+        "upstreamUserAgents": [
+          "litellm/1.105.1"
+        ],
+        "upstreamGotRunIdHeader": false,
+        "spendRows": [
+          {
+            "model": "capture",
+            "startTime": "2026-10-17T05:04:28.604000Z",
+            "spend": 0.0029,
+            "tokens": {
+              "prompt": 6300,
+              "plainInput": 1000,
+              "cacheRead": 5000,
+              "cacheWrite": 300,
+              "output": 200
+            },
+            "expected": 0.0029,
+            "cacheAtInputRate": 0.0071,
+            "match": true,
+            "tags": [
+              "project-demo",
+              "User-Agent: claude-cli",
+              "User-Agent: claude-cli/2.1.300 (external, sdk-cli)"
+            ],
+            "userAgent": "claude-cli/2.1.300 (external, sdk-cli)"
+          }
+        ]
+      },
+      "capture-fwd": {
+        "claudeOk": true,
+        "upstreamUserAgents": [
+          "litellm/1.105.1"
+        ],
+        "upstreamGotRunIdHeader": true,
+        "spendRows": [
+          {
+            "model": "capture-fwd",
+            "startTime": "2026-10-17T05:04:32.006000Z",
+            "spend": 0.0029,
+            "tokens": {
+              "prompt": 6300,
+              "plainInput": 1000,
+              "cacheRead": 5000,
+              "cacheWrite": 300,
+              "output": 200
+            },
+            "expected": 0.0029,
+            "cacheAtInputRate": 0.0071,
+            "match": true,
+            "tags": [
+              "project-demo",
+              "User-Agent: claude-cli",
+              "User-Agent: claude-cli/2.1.300 (external, sdk-cli)"
+            ],
+            "userAgent": "claude-cli/2.1.300 (external, sdk-cli)"
+          }
+        ]
+      }
+    },
+    "budget": {
+      "maxBudget": 0.005,
+      "perCall": 0.0029,
+      "statuses": [
+        200,
+        200,
+        422
+      ],
+      "blockedThirdCall": true
+    },
+    "realModels": {
+      "deepseek-chat": {
+        "kind": "pay-as-you-go",
+        "status": "SKIP (no key)"
+      },
+      "kimi-for-coding": {
+        "kind": "Kimi membership",
+        "status": "SKIP (no key)"
+      },
+      "minimax": {
+        "kind": "MiniMax coding plan",
+        "status": "SKIP (no key)"
+      }
+    }
+  },
+  "finishedAt": "2026-10-17T05:05:20.139Z"
+}
