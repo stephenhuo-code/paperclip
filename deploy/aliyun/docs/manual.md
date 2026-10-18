@@ -144,50 +144,61 @@ Paperclip 登录页和 Keycloak 登录页显示的名称与 logo 由部署配置
 ### 2.1 第一次登录网关
 
 1. 打开 `https://llm.ai-datum.net/ui`。用户名 `admin`，密码为服务器 `/opt/paperclip/.env` 中 `LITELLM_MASTER_KEY` 的值**前面加 `sk-`**。
-2. 登录后到 **Internal Users** 新建一个自己的管理员账号（角色选 Admin），以后用它登录。
+2. **Internal Users → Invite User**：填自己的邮箱，角色选 Admin，复制显示的邀请链接，用无痕窗口打开并设置密码。以后用这个账号登录。
 
 ### 2.2 添加模型和单价
 
-1. **Models + Endpoints → Add Model**：Provider 选 **Anthropic**，填模型名、API Base、上游 Key：
+1. **Models + Endpoints → Add Model**：
+   - **Provider** 选 **Anthropic**；
+   - **LiteLLM Model Name(s)** 选第一项 **Custom Model Name (Enter below)**，在下面的输入框填上游的模型名；
+   - **Model Mappings** 自动生成一行，**Public Model Name** 就是 Paperclip 中选的模型名（不要手动改，要改名在添加后到模型详情里改）；
+   - **Upstream API Base**、**API Key** 按下表填写，先点 **Test Connect**，通过后点 **Add Model**。
 
-   | 模型 | 模型名（Paperclip 中选择的名字） | API Base |
+   | 服务 | 上游模型名 | API Base |
    |---|---|---|
-   | DeepSeek（按量） | `deepseek-chat` | `https://api.deepseek.com/anthropic` |
-   | Kimi 会员 | `kimi-for-coding` | `https://api.kimi.com/coding` |
-   | MiniMax 编程套餐 | `MiniMax-M3`（以套餐为准） | `https://api.minimaxi.com/anthropic` |
+   | DeepSeek（按量） | `deepseek-flash`、`deepseek-v4-pro` | `https://api.deepseek.com/anthropic` |
+   | Kimi 会员 | `kimi-for-coding`、`k3`、`k3-256k` | `https://api.kimi.com/coding` |
+   | MiniMax 编程套餐 | `MiniMax-M3`、`MiniMax-M3.1-Flash-Preview` | `https://api.minimaxi.com/anthropic` |
 
 2. 打开模型详情 → **Model Settings → Pricing**，填四个单价（美元 / 百万 token）：输入、输出、缓存命中、缓存写入。
-   - **缓存命中、缓存写入一定要填**：留空会按输入单价计费，算多。
-   - 会员 / 套餐类（如 Kimi 会员）填"等价单价"，用于预算。
+   - **缓存命中、缓存写入一定要填**：留空会按输入单价计费。
+   - 会员 / 套餐类填"等价单价"，用于预算。
    - **没有填单价的模型不能调用**：agent 运行会失败并提示"模型未设单价"。
 3. 改单价立即生效，只影响之后的调用。
+4. 建议为会员 / 套餐类模型配置备用模型（额度用完时自动改用）：**Settings → Router Settings → Fallbacks → Add Fallbacks**。
 
 ### 2.3 在 Paperclip 中建网关连接（只做一次）
 
-1. 网关 **Virtual Keys → Create New Key**，名称如 `paperclip`，不限模型；复制 Key（只显示一次）。
-2. Paperclip 新建 agent 到 **Connect a model** 一步，点 **Use API key instead**，选自定义网关（Messages API / Anthropic 兼容）：
-   - Base URL：`https://llm.ai-datum.net`
-   - API Key：上一步的网关 Key
-   - 模型：填网关中的模型名（如 `deepseek-chat`、`kimi-for-coding`）
-   - 访问范围：**所有 agent**
-3. 把这个连接命名为 **模型网关**（名称必须一致，写回程序靠它识别）。
+1. 网关 **Virtual Keys → Create New Key**，名称如 `paperclip`，模型选全部；复制 Key（只显示一次）。
+2. Paperclip **Connectors → Browse → Paperclip** 标签，找到 **Messages API**，点 **Connect**（已有网关连接时为 **Add account**）：
+   - **Provider URL**：`https://llm.ai-datum.net`（必须与部署配置的网关地址 `PAPERCLIP_GATEWAY_URL` 一致）
+   - **API key**：上一步的网关 Key
+   - **Model IDs (comma separated)**：网关中的 Public Model Name，用英文逗号分隔，例如 `deepseek-flash, deepseek-v4-pro, kimi-for-coding, MiniMax-M3`。**建好后不能修改**，以后加了新模型可在 agent 的模型框中直接输入
+   - 访问范围：**Any agent**
+3. 连接名称随意，不需要改名：地址是网关地址的连接都会被识别为网关连接。
+4. 保存后进入这个连接的页面，建议加书签。要替换网关连接时：**先建新的，再撤销旧的**（Messages API 下一个有效连接都不剩时，Paperclip 会把它归档，之后新建的连接在 Connectors 中看不到，见 2.7）。
 
 ### 2.4 让 agent 使用网关
 
-- 新建或修改 agent：运行方式选 **Claude Code**，模型连接选 **模型网关**，选模型。**高级 → ACP server command 留空**，1 分钟内会自动补上带运行标识的启动命令。
-- 已经填写了 ACP server command、选了别的连接、或不是 Claude Code 的 agent **不会被修改**，它们的花费也不经网关、不会写回。
-- 现有直连的 agent（如 CFO、AI 情报员）：把模型连接改为 **模型网关** 即可纳入。
+新建或修改 agent，在 **Harness / Runtime** 中：
+
+1. **Adapter type** 选 **Claude Code**；
+2. **Connection** 选网关连接（后面带 "Reconnect" 的是已失效的，不要选）；
+3. **Model** 选网关中的模型；
+4. 保存。
+
+**其他都自动完成**：约 30 秒内系统为它设置带运行标识的启动命令，之后每次调用的花费都会写回 Paperclip。以下情况不会自动设置，花费也不会写回：执行引擎选了 **Claude CLI**、自己填写过 **ACP server command**、或不是 Claude Code。
 
 ### 2.5 写回账号（只做一次）
 
-写回程序用 Paperclip 应急管理员登录，写入费用。在服务器 `/opt/paperclip/.env` 中加入：
+写回程序用 Paperclip 应急管理员登录并写入费用。在服务器 `/opt/paperclip/.env` 中加入：
 
 ```
 PAPERCLIP_SYNC_EMAIL=63592990@qq.com
 PAPERCLIP_SYNC_PASSWORD=<应急密码>
 ```
 
-然后重新发布一次。未设置时，网关照常工作，但花费不会写回 Paperclip。
+然后重新发布一次。账号缺失、登录失败或网关地址未配置时，**发布日志**（GitHub Actions 中的部署步骤）会出现 `warning: gateway-sync …` 并说明处理办法；发布本身不受影响。
 
 ### 2.6 查看花费与预算
 
@@ -200,6 +211,9 @@ PAPERCLIP_SYNC_PASSWORD=<应急密码>
 | 现象 | 处理 |
 |---|---|
 | agent 运行报"模型未设单价" | 到网关为该模型填写单价 |
-| agent 运行报连接失败 | 网关是否在运行（Paperclip 不会改为直连） |
-| 费用页看不到网关花费 | `.env` 是否设置了写回账号；连接名称是否为"模型网关" |
+| 保存 agent 时提示 "failed validation" | 网关 **Logs** 中看失败原因：模型名与网关不一致、未设单价、网关 Key 不允许该模型、上游地址或 Key 有误 |
+| 运行报 "Reconnect or validate the selected AI account" | agent 选的连接已失效：在 **Harness / Runtime** 重新选有效的网关连接 |
+| 连接显示 "Sign in again to restore this AI connection" | 上游返回了认证或额度错误（如 Kimi 5 小时额度用完）：先在网关 **Logs** 查原因并处理，再点 **Reconnect** 重新填网关 Key |
+| 费用页没有 `litellm` 的费用行 | 网关 **Logs** 中该调用的 Tags 应有 `paperclip-run:…`；没有说明 agent 不符合 2.4 的条件；有则检查发布日志中的 gateway-sync 警告 |
+| Connectors 中看不到新建的网关连接（agent 中能选） | Messages API 应用被 Paperclip 归档了。在服务器执行：`docker exec paperclip-postgres-1 psql -U postgres -d paperclip -c "update tool_applications set status='active', archived_at=null, updated_at=now() where application_key='app-gallery:messages-api' and status='archived';"` |
 | 上游 Key 更换 | 网关模型详情 → **Update API Key**，Paperclip 不用改 |

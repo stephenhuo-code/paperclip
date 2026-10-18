@@ -5,11 +5,13 @@
 // Logs one JSON object per line. Never logs credentials.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import { createPaperclipClient, runOnce } from "./lib.mjs";
+import { createPaperclipClient, runOnce, syncStatus } from "./lib.mjs";
 
 const env = process.env;
 const INTERVAL_MS = Number(env.SYNC_INTERVAL_MS ?? 30_000);
 export const HEARTBEAT_FILE = "/tmp/gateway-sync-heartbeat";
+// Read by deploy.sh to warn about write-back problems in the deploy log.
+export const STATUS_FILE = "/tmp/gateway-sync-status.json";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const log = (event, fields = {}) => console.log(JSON.stringify({ at: new Date().toISOString(), event, ...fields }));
@@ -53,7 +55,7 @@ const db = {
 
 const config = {
   launcher: env.ACP_LAUNCHER ?? "/usr/local/bin/claude-agent-acp-tagged",
-  gatewayConnectionName: env.PAPERCLIP_GATEWAY_CONNECTION_NAME ?? "模型网关",
+  gatewayUrl: env.PAPERCLIP_GATEWAY_URL || null,
   windowMs: 2 * 3600_000,
   reportEveryMs: 3600_000,
 };
@@ -63,21 +65,25 @@ const paperclip = env.PAPERCLIP_SYNC_EMAIL && env.PAPERCLIP_SYNC_PASSWORD
   : null;
 
 async function round() {
-  // The heartbeat proves the loop is alive; failures are logged, not fatal.
-  fs.writeFileSync(HEARTBEAT_FILE, String(Date.now()));
+  let stats, error;
   if (!paperclip) {
     if (!state.warnedNoAccount) log("sync-account-missing", { hint: "set PAPERCLIP_SYNC_EMAIL and PAPERCLIP_SYNC_PASSWORD in /opt/paperclip/.env" });
     state.warnedNoAccount = true;
-    return;
+  } else {
+    try {
+      stats = await runOnce({ db, paperclip, config, now: () => new Date(), state, log });
+      if (stats.patched || stats.posted || stats.failed) log("round", stats);
+    } catch (e) {
+      error = e;
+      log("round-failed", { error: e.message });
+    }
   }
-  try {
-    const stats = await runOnce({ db, paperclip, config, now: () => new Date(), state, log });
-    if (stats.patched || stats.posted || stats.failed) log("round", stats);
-  } catch (error) {
-    log("round-failed", { error: error.message });
-  }
+  // Status, then heartbeat: a healthy container always has a status to report.
+  const status = syncStatus({ accountConfigured: Boolean(paperclip), gatewayUrl: config.gatewayUrl, stats, error, at: new Date() });
+  fs.writeFileSync(STATUS_FILE, JSON.stringify(status));
+  fs.writeFileSync(HEARTBEAT_FILE, String(Date.now()));
 }
 
-log("started", { intervalMs: INTERVAL_MS, gatewayConnectionName: config.gatewayConnectionName });
+log("started", { intervalMs: INTERVAL_MS, gatewayUrl: config.gatewayUrl });
 await round();
 setInterval(round, INTERVAL_MS);

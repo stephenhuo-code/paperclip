@@ -75,6 +75,23 @@ gateway_sync_ready() {
   compose exec -T gateway-sync node /app/health.mjs </dev/null >/dev/null 2>&1
 }
 
+# Usage: report_gateway_sync. Prints a warning for write-back problems that
+# gateway-sync reported (specs/006 plan-auto-setup). Never fails the deploy.
+report_gateway_sync() {
+  local status
+  status="$(compose exec -T gateway-sync cat /tmp/gateway-sync-status.json </dev/null 2>/dev/null || true)"
+  case "$status" in
+    *'"status":"ok"'*) ;;
+    *'"status":"account-missing"'*)
+      echo "warning: gateway-sync cannot write gateway spend to Paperclip: no account. Set PAPERCLIP_SYNC_EMAIL and PAPERCLIP_SYNC_PASSWORD (the emergency admin) in $SECRETS_FILE and deploy again." >&2 ;;
+    *'"status":"login-failed"'*)
+      echo "warning: gateway-sync cannot sign in to Paperclip. Check PAPERCLIP_SYNC_EMAIL and PAPERCLIP_SYNC_PASSWORD in $SECRETS_FILE and deploy again." >&2 ;;
+    *'"status":"gateway-url-missing"'*)
+      echo "warning: gateway-sync does not know the gateway address, so agents are not set up for billing. Set PAPERCLIP_GATEWAY_URL in $ENV_FILE." >&2 ;;
+    *) echo "warning: gateway-sync status unknown or failing: ${status:-no status}" >&2 ;;
+  esac
+}
+
 paperclip_ready() {
   local expected_commit="$1" body
   local -a ca_args=()

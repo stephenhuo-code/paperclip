@@ -109,3 +109,12 @@
 ## 实施策略
 
 先完成 Phase 2 + US1 + US2 + US3（MVP：模型经网关、界面定价、按项目执行预算），再做 US4（标识转发）和 US5（自动补齐），最后文档与本地全流程验证。
+
+## Phase 9: 网关接入自动完成（[plan-auto-setup.md](./plan-auto-setup.md)）
+
+- [X] T044 `gateway-sync.test.mjs` 先写：网关地址规范化与匹配（大小写、末尾 `/`、`/v1`、不同主机）；按地址识别连接（名字随意、多个连接、已撤销不算）；CLI 引擎不补齐；未配置网关地址只写回不补齐并提示一次；状态内容（ok / account-missing / login-failed / gateway-url-missing）
+- [X] T045 `compose.test.mjs`、`tests/fixtures/production.env` 先写：gateway-sync 有 `PAPERCLIP_GATEWAY_URL`，无连接名配置
+- [X] T046 `deploy.test.mjs` 先写：gateway-sync 状态非 ok 时发布日志有警告且发布成功；ok 时无警告
+- [X] T047 实现：`gateway-sync/lib.mjs`、`sync.mjs`、`docker-compose.yml`、`environments/production.env`、`scripts/deploy.sh`（或 `lib.sh`）、`tests/helpers/sandbox.mjs`
+- [X] T048 手册第二章、README 更新；`deploy/aliyun/tests/run.sh` 通过
+- [X] T049 本地验证（plan-auto-setup"测试与验证"第 3 步），记录到 `verification.md`；提交

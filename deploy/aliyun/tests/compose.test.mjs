@@ -198,7 +198,9 @@ describe("docker-compose.yml", () => {
       // Straight to Paperclip on the internal network; Origin is the public URL.
       assert.equal(env.PAPERCLIP_URL, "http://paperclip:3100");
       assert.equal(env.PAPERCLIP_ORIGIN, "https://agents.example.cn");
-      assert.equal(env.PAPERCLIP_GATEWAY_CONNECTION_NAME, "模型网关");
+      // The gateway is recognized by this address, not by a connection name.
+      assert.equal(env.PAPERCLIP_GATEWAY_URL, "https://llm.example.cn");
+      assert.ok(!("PAPERCLIP_GATEWAY_CONNECTION_NAME" in env));
       assert.equal(env.ACP_LAUNCHER, "/usr/local/bin/claude-agent-acp-tagged");
       assert.ok("PAPERCLIP_SYNC_EMAIL" in env && "PAPERCLIP_SYNC_PASSWORD" in env);
       assert.ok(!Object.keys(env).some((k) => k === "DATABASE_URL"), "never gets Paperclip's read-write database URL");

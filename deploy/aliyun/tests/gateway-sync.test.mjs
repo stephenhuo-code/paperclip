@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   parseRunTags, toCostEvent, reconcileAgent, createPaperclipClient, runOnce,
+  normalizeGatewayUrl, gatewayConnectionIds, syncStatus,
 } from "../gateway-sync/lib.mjs";
 
 // specs/006-litellm-gateway-billing: gateway-sync writes LiteLLM spend back to
@@ -54,8 +55,29 @@ describe("toCostEvent", () => {
   });
 });
 
+describe("gateway address matching", () => {
+  it("normalizes case, a trailing slash and a trailing /v1", () => {
+    for (const url of ["https://llm.ai-datum.net", "HTTPS://LLM.ai-datum.net/", "https://llm.ai-datum.net/v1", "https://llm.ai-datum.net/v1/"]) {
+      assert.equal(normalizeGatewayUrl(url), "https://llm.ai-datum.net", url);
+    }
+    assert.equal(normalizeGatewayUrl(""), null);
+    assert.equal(normalizeGatewayUrl(undefined), null);
+  });
+  it("finds every live connection that points at the gateway, whatever its name", () => {
+    const connections = [
+      { id: "a", name: "模型网关", status: "connected", routing: { baseUrl: "https://llm.ai-datum.net" } },
+      { id: "b", name: "Company llm.ai-datum.net", status: "needs_attention", routing: { baseUrl: "https://llm.ai-datum.net/" } },
+      { id: "c", name: "old", status: "revoked", routing: { baseUrl: "https://llm.ai-datum.net" } },
+      { id: "d", name: "DeepSeek direct", status: "connected", routing: { baseUrl: "https://api.deepseek.com/anthropic" } },
+      { id: "e", name: "subscription", status: "connected" },
+    ];
+    assert.deepEqual([...gatewayConnectionIds(connections, "https://llm.ai-datum.net")].sort(), ["a", "b"]);
+    assert.equal(gatewayConnectionIds(connections, null).size, 0);
+  });
+});
+
 describe("reconcileAgent", () => {
-  const opts = { gatewayConnectionId: "conn-gw", launcher: LAUNCHER };
+  const opts = { gatewayConnectionIds: new Set(["conn-gw"]), launcher: LAUNCHER };
   const agent = (over = {}) => ({
     id: "a1", name: "AI情报员", adapterType: "claude_local",
     adapterConfig: { model: "deepseek-chat", effort: "high" },
@@ -74,6 +96,7 @@ describe("reconcileAgent", () => {
     ["another connection", { runtimeConfig: { aiConnection: { mode: "shared", connectionId: "conn-deepseek" } } }],
     ["no connection", { runtimeConfig: {} }],
     ["another runtime", { adapterType: "codex_local" }],
+    ["the Claude CLI engine (no ACP command is used)", { adapterConfig: { engine: "cli" } }],
   ]) {
     it(`never changes an agent with ${label}; reports it as not via the gateway`, () => {
       const result = reconcileAgent(agent(over), opts);
@@ -137,7 +160,8 @@ describe("createPaperclipClient", () => {
 
 describe("runOnce", () => {
   const NOW = new Date("2026-10-17T09:00:00Z");
-  const gateway = { id: "conn-gw", name: "模型网关" };
+  // Any name: the gateway is recognized by its address.
+  const gateway = { id: "conn-gw", name: "Company llm.example.cn", status: "connected", routing: { baseUrl: "https://LLM.example.cn/" } };
   const deps = (fake, rows, runs = [run], state = {}) => {
     const logs = [];
     return {
@@ -148,7 +172,7 @@ describe("runOnce", () => {
           async runs(ids) { return runs.filter((r) => ids.includes(r.id)); },
         },
         paperclip: createPaperclipClient({ baseUrl: "https://agents.example.cn", email: "e", password: "p", fetchImpl: fake.fetchImpl }),
-        config: { launcher: LAUNCHER, gatewayConnectionName: "模型网关", windowMs: 2 * 3600_000, reportEveryMs: 3600_000 },
+        config: { launcher: LAUNCHER, gatewayUrl: "https://llm.example.cn", windowMs: 2 * 3600_000, reportEveryMs: 3600_000 },
         now: () => NOW, state, log: (event, fields) => logs.push([event, fields]),
       },
     };
@@ -201,15 +225,32 @@ describe("runOnce", () => {
     assert.equal(stats.patched, 1);
   });
 
-  it("uses the live gateway connection, not a revoked one with the same name", async () => {
-    const agents = [{ id: "a1", name: "x", adapterType: "claude_local", adapterConfig: {}, runtimeConfig: { aiConnection: { connectionId: "conn-new" } } }];
-    const fake = fakePaperclip({ connections: [{ id: "conn-old", name: "模型网关", status: "revoked" }, { id: "conn-new", name: "模型网关", status: "connected" }], agents });
+  it("fills in agents on any live gateway connection, never on a revoked one", async () => {
+    const url = { baseUrl: "https://llm.example.cn" };
+    const agents = ["conn-a", "conn-b", "conn-old"].map((c, i) => ({ id: `a${i}`, name: c, adapterType: "claude_local", adapterConfig: {}, runtimeConfig: { aiConnection: { connectionId: c } } }));
+    const fake = fakePaperclip({ connections: [
+      { id: "conn-a", name: "模型网关", status: "connected", routing: url },
+      { id: "conn-b", name: "Company llm.example.cn", status: "connected", routing: url },
+      { id: "conn-old", name: "模型网关", status: "revoked", routing: url },
+    ], agents });
     const { deps: d } = deps(fake, []);
     await runOnce(d);
-    assert.equal(fake.calls.filter((c) => c.method === "PATCH").length, 1);
+    assert.deepEqual(fake.calls.filter((c) => c.method === "PATCH").map((c) => c.route).sort(), ["/api/agents/a0", "/api/agents/a1"]);
   });
 
-  it("skips filling in when the gateway connection does not exist, but still writes spend", async () => {
+  it("without a configured gateway address writes spend but changes no agent, and says so once", async () => {
+    const agents = [{ id: "a1", name: "x", adapterType: "claude_local", adapterConfig: {}, runtimeConfig: { aiConnection: { connectionId: "conn-gw" } } }];
+    const fake = fakePaperclip({ connections: [gateway], agents });
+    const { deps: d, logs } = deps(fake, [row()]);
+    d.config = { ...d.config, gatewayUrl: undefined };
+    const first = await runOnce(d);
+    await runOnce(d);
+    assert.equal(fake.calls.filter((c) => c.method === "PATCH").length, 0);
+    assert.equal(logs.filter(([e]) => e === "gateway-url-missing").length, 1);
+    assert.equal(first.posted, 1);
+  });
+
+  it("skips filling in when no connection points at the gateway, but still writes spend", async () => {
     const agents = [{ id: "a1", name: "x", adapterType: "claude_local", adapterConfig: {}, runtimeConfig: { aiConnection: { connectionId: "conn-gw" } } }];
     const fake = fakePaperclip({ connections: [], agents });
     const { deps: d, logs } = deps(fake, [row()]);
@@ -228,5 +269,19 @@ describe("runOnce", () => {
     const stats = await runOnce(d);
     assert.equal(stats.failed, 2);
     assert.equal(logs.filter(([e]) => e === "write-failed").length, 2);
+  });
+});
+
+describe("syncStatus", () => {
+  const at = new Date("2026-10-19T08:00:00Z");
+  it("is ok after a successful round", () => {
+    assert.deepEqual(syncStatus({ accountConfigured: true, gatewayUrl: "https://llm.example.cn", stats: { posted: 3, patched: 1, failed: 0 }, at }),
+      { status: "ok", at: at.toISOString(), posted: 3, patched: 1, failed: 0 });
+  });
+  it("names the problem when the account is missing, sign-in fails, or the address is missing", () => {
+    assert.equal(syncStatus({ accountConfigured: false, gatewayUrl: "https://x", at }).status, "account-missing");
+    assert.equal(syncStatus({ accountConfigured: true, gatewayUrl: "https://x", error: new Error("Paperclip sign-in failed (HTTP 401)"), at }).status, "login-failed");
+    assert.equal(syncStatus({ accountConfigured: true, gatewayUrl: "https://x", error: new Error("fetch failed"), at }).status, "error");
+    assert.equal(syncStatus({ accountConfigured: true, gatewayUrl: null, stats: { posted: 0, patched: 0, failed: 0 }, at }).status, "gateway-url-missing");
   });
 });

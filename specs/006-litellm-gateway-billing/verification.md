@@ -29,3 +29,15 @@
 - agent 填写不存在的 ACP 启动命令时，Paperclip 在选用连接时校验运行环境并拒绝（`adapter_engine_unavailable`）。
 
 测试：`deploy/aliyun/tests/run.sh`（shellcheck、actionlint、全部 node 测试）通过；`litellm-hooks-test.sh`、`postgres-roles-test.sh` 通过。
+
+## 2026-10-19 网关接入自动完成（plan-auto-setup，`experiments/litellm-verify/e2e-auto.mjs`）
+
+| 检查 | 结果 |
+|---|---|
+| 按地址识别网关连接 | ✅ 新连接名为"网关-自动-…"（不叫"模型网关"），地址末尾带 `/`，仍被识别 |
+| 只选连接和模型，启动命令自动设置 | ✅ 选用后约 1 分钟，`adapterConfig.agentCommand` 被设为 `/usr/local/bin/claude-agent-acp-tagged`（日志 `launcher-set`） |
+| 花费写回 | ✅ 一次任务：4 条、$0.0345，全部带项目 |
+| 写回程序状态 | ✅ 正常时 `{"status":"ok",…}`，发布日志无警告 |
+| 缺少写回账号时 | ✅ 发布成功，日志出现 `warning: gateway-sync cannot write gateway spend to Paperclip: no account. Set PAPERCLIP_SYNC_EMAIL and PAPERCLIP_SYNC_PASSWORD …`；补回后再发布无警告 |
+
+测试：`deploy/aliyun/tests/run.sh` 通过。

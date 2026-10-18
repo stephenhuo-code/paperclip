@@ -82,6 +82,8 @@ case "$name" in
             cat "$FAKE_STATE/pc-companies" ;;
         esac
         exit 0 ;;
+      *" exec -T gateway-sync cat "*)
+        printf '%s' "${'${FAKE_GATEWAY_SYNC_STATUS:-{\"status\":\"ok\"}}'}" ;;
       *" exec -T gateway-sync "*)
         if [ "${'${FAKE_GATEWAY_SYNC_READY:-1}'}" = "1" ]; then exit 0; else exit 1; fi ;;
       *" exec -T litellm "*)

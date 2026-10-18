@@ -35,7 +35,7 @@
 | `keycloak` | 单点登录（Keycloak 26.8.0） | 无 |
 | `postgres` | `paperclip`、`keycloak` 两个库，各自独立账号 | 无 |
 | `litellm` | 模型网关（LiteLLM）：所有模型统一接入，上游 Key 与单价在其管理界面设置；拒绝未设单价的模型；管理界面与接口仅管理员网段和容器内网可访问（specs/006） | 无（经 Caddy 的 `LLM_DOMAIN`） |
-| `gateway-sync` | 每 30 秒把网关花费按运行写回 Paperclip（agent / 任务 / 项目），并为选了"模型网关"连接、ACP 启动命令为空的 Claude Code agent 补上带运行标识的启动命令 | 无 |
+| `gateway-sync` | 每 30 秒把网关花费按运行写回 Paperclip（agent / 任务 / 项目），并为选用网关连接（地址为 `PAPERCLIP_GATEWAY_URL`）的 Claude Code agent 自动设置带运行标识的启动命令 | 无 |
 | `keycloak-config` | 一次性任务：运行 `keycloak/provision.sh` 初始化 realm、组织、客户端 | 无 |
 
 文件：
@@ -167,7 +167,8 @@ ACR_USERNAME=<ACR 用户名> ACR_PASSWORD=<ACR 密码> ./scripts/bootstrap.sh pr
 
 - **DNS**：首次启用前在阿里云 DNS 添加 `LLM_DOMAIN`（`environments/production.env`）解析到 ECS；Caddy 自动签发证书。
 - **密钥**：`LITELLM_MASTER_KEY`、`LITELLM_SALT_KEY`、`LITELLM_DB_PASSWORD`、`PAPERCLIP_READONLY_DB_PASSWORD` 在首次发布时自动生成到 `/opt/paperclip/.env`。**`LITELLM_SALT_KEY` 永远不要修改**，否则网关中保存的上游 Key 无法解密。
-- **写回账号**：在 `.env` 中设置 `PAPERCLIP_SYNC_EMAIL`、`PAPERCLIP_SYNC_PASSWORD`（应急管理员）并重新发布；未设置时网关照常工作，花费不写回。
+- **网关地址**：`environments/<env>.env` 中的 `PAPERCLIP_GATEWAY_URL`（生产为 `https://llm.ai-datum.net`）。Paperclip 中地址为此值的 AI 连接即网关连接，名称随意；gateway-sync 为选用它的 Claude Code agent 自动设置带运行标识的启动命令。
+- **写回账号**：管理员在 `.env` 中设置 `PAPERCLIP_SYNC_EMAIL`、`PAPERCLIP_SYNC_PASSWORD`（应急管理员）并重新发布；未设置或登录失败时网关照常工作、花费不写回，发布日志会出现 `warning: gateway-sync …`。
 - **启动脚本**：`litellm/claude-agent-acp-tagged.sh` 挂载到 paperclip 容器，给每次模型调用加上运行和任务标识。
 - **备份**：`litellm` 库随每日备份一起导出、恢复。
 

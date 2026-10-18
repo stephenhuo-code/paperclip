@@ -58,4 +58,5 @@ if [ -n "$PREVIOUS_TAG" ]; then
   printf '%s\n' "$PREVIOUS_TAG" > "$STATE_DIR/previous"
 fi
 printf '%s\n' "$TARGET_TAG" > "$STATE_DIR/current"
+report_gateway_sync
 echo "deployed $TARGET_TAG"

@@ -133,6 +133,31 @@ describe("deploy.sh", () => {
     assert.equal(box.readState("current"), OLD);
   });
 
+  // plan-auto-setup: a write-back problem is visible in the deploy log, without failing the deploy.
+  for (const [status, hint] of [
+    ["account-missing", /PAPERCLIP_SYNC_EMAIL/],
+    ["login-failed", /PAPERCLIP_SYNC_PASSWORD/],
+    ["gateway-url-missing", /PAPERCLIP_GATEWAY_URL/],
+  ]) {
+    it(`warns in the deploy log when gateway-sync reports ${status}, and still deploys`, () => {
+      const result = box.run("deploy.sh", ["production", NEW], {
+        FAKE_HEALTH_BODY: healthy(NEW), FAKE_GATEWAY_SYNC_STATUS: JSON.stringify({ status, at: "2026-10-19T08:00:00Z" }),
+      });
+      assert.equal(result.status, 0, result.output);
+      assert.match(result.output, /warning: gateway-sync/i);
+      assert.match(result.output, hint);
+      assert.equal(box.readState("current"), NEW);
+    });
+  }
+
+  it("prints no gateway-sync warning when write-back is ok", () => {
+    const result = box.run("deploy.sh", ["production", NEW], {
+      FAKE_HEALTH_BODY: healthy(NEW), FAKE_GATEWAY_SYNC_STATUS: JSON.stringify({ status: "ok", at: "2026-10-19T08:00:00Z", posted: 2 }),
+    });
+    assert.equal(result.status, 0, result.output);
+    assert.doesNotMatch(result.output, /warning: gateway-sync/i);
+  });
+
   it("rejects an unknown environment", () => {
     const result = box.run("deploy.sh", ["staging-does-not-exist", NEW], { FAKE_HEALTH_BODY: healthy(NEW) });
     assert.equal(result.status, 1);

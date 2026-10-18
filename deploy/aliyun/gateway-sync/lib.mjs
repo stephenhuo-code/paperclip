@@ -45,16 +45,38 @@ export function toCostEvent(row, run) {
   };
 }
 
+/** Compare gateway addresses: case-insensitive scheme and host, no trailing "/" or "/v1". */
+export function normalizeGatewayUrl(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(String(value).trim());
+    const path = url.pathname.replace(/\/+$/, "").replace(/\/v1$/, "");
+    return `${url.protocol}//${url.host}${path}`.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** Ids of the live AI connections that point at the configured gateway, whatever they are called. */
+export function gatewayConnectionIds(connections, gatewayUrl) {
+  const target = normalizeGatewayUrl(gatewayUrl);
+  if (!target) return new Set();
+  return new Set(connections
+    .filter((c) => c.status !== "revoked" && normalizeGatewayUrl(c.routing?.baseUrl) === target)
+    .map((c) => c.id));
+}
+
 /**
  * Fill in the tagging launcher only where nothing was chosen: a Claude Code
- * agent on the gateway connection with an empty ACP command. Anything
- * customized is left alone and reported as not via the gateway.
+ * agent on a gateway connection, on the ACP engine, with an empty ACP command.
+ * Anything customized is left alone and reported as not via the gateway.
  */
-export function reconcileAgent(agent, { gatewayConnectionId, launcher }) {
+export function reconcileAgent(agent, { gatewayConnectionIds: gateways, launcher }) {
   if (agent.adapterType !== "claude_local") return { action: "skip", reason: "not Claude Code" };
-  if (agent.runtimeConfig?.aiConnection?.connectionId !== gatewayConnectionId) {
-    return { action: "skip", reason: "not on the gateway connection" };
+  if (!gateways.has(agent.runtimeConfig?.aiConnection?.connectionId)) {
+    return { action: "skip", reason: "not on a gateway connection" };
   }
+  if (agent.adapterConfig?.engine === "cli") return { action: "skip", reason: "Claude CLI engine (uses no ACP command)" };
   const command = agent.adapterConfig?.agentCommand;
   if (command === launcher) return { action: "ok" };
   if (command) return { action: "skip", reason: "custom ACP server command" };
@@ -97,14 +119,19 @@ const asList = (value, key) => (Array.isArray(value) ? value : value?.[key] ?? [
 async function reconcileAgents({ paperclip, config, state, log }, stats) {
   state.missingConnection ??= new Set();
   const notViaGateway = [];
+  if (!normalizeGatewayUrl(config.gatewayUrl)) {
+    if (!state.warnedNoGatewayUrl) log("gateway-url-missing", { hint: "set PAPERCLIP_GATEWAY_URL in environments/<env>.env" });
+    state.warnedNoGatewayUrl = true;
+    return notViaGateway;
+  }
   for (const company of asList(await paperclip.get("/api/companies"), "companies")) {
     const connections = asList(await paperclip.get(`/api/companies/${company.id}/ai-connections`), "connections");
-    const gateway = connections.find((c) => c.name === config.gatewayConnectionName && c.status !== "revoked");
+    const gateways = gatewayConnectionIds(connections, config.gatewayUrl);
     const agents = asList(await paperclip.get(`/api/companies/${company.id}/agents`), "agents");
-    if (!gateway) {
+    if (gateways.size === 0) {
       // Once per company until the connection appears; the hourly report repeats it.
       if (!state.missingConnection.has(company.id)) {
-        log("gateway-connection-missing", { companyId: company.id, name: config.gatewayConnectionName });
+        log("gateway-connection-missing", { companyId: company.id, gatewayUrl: config.gatewayUrl });
         state.missingConnection.add(company.id);
       }
       for (const a of agents) notViaGateway.push({ name: a.name, reason: "no gateway connection in this company" });
@@ -112,7 +139,7 @@ async function reconcileAgents({ paperclip, config, state, log }, stats) {
     }
     state.missingConnection.delete(company.id);
     for (const agent of agents) {
-      const result = reconcileAgent(agent, { gatewayConnectionId: gateway.id, launcher: config.launcher });
+      const result = reconcileAgent(agent, { gatewayConnectionIds: gateways, launcher: config.launcher });
       if (result.action === "patch") {
         await paperclip.patch(`/api/agents/${agent.id}`, { adapterConfig: result.adapterConfig });
         stats.patched++;
@@ -160,4 +187,14 @@ export async function runOnce(deps) {
     state.lastReportAt = now().getTime();
   }
   return stats;
+}
+
+/** What gateway-sync reports about its last round (read by deploy.sh). */
+export function syncStatus({ accountConfigured, gatewayUrl, stats, error, at }) {
+  const base = { at: at.toISOString() };
+  if (!accountConfigured) return { ...base, status: "account-missing" };
+  if (error) return { ...base, status: /sign-in failed/i.test(error.message) ? "login-failed" : "error", error: error.message };
+  const counts = { posted: stats?.posted ?? 0, patched: stats?.patched ?? 0, failed: stats?.failed ?? 0 };
+  if (!normalizeGatewayUrl(gatewayUrl)) return { ...base, status: "gateway-url-missing", ...counts };
+  return { ...base, status: "ok", ...counts };
 }

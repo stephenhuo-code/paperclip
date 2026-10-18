@@ -161,7 +161,8 @@ services:
       # The Paperclip account gateway-sync signs in as (README "模型网关"); empty until set.
       PAPERCLIP_SYNC_EMAIL: ${PAPERCLIP_SYNC_EMAIL:-}
       PAPERCLIP_SYNC_PASSWORD: ${PAPERCLIP_SYNC_PASSWORD:-}
-      PAPERCLIP_GATEWAY_CONNECTION_NAME: ${PAPERCLIP_GATEWAY_CONNECTION_NAME:-模型网关}
+      # AI connections with this address are the gateway, whatever their name.
+      PAPERCLIP_GATEWAY_URL: ${PAPERCLIP_GATEWAY_URL:-}
       ACP_LAUNCHER: /usr/local/bin/claude-agent-acp-tagged
     healthcheck:
       test: ["CMD", "node", "/app/health.mjs"]
