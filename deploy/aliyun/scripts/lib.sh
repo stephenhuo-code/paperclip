@@ -81,6 +81,8 @@ report_gateway_sync() {
   local status
   status="$(compose exec -T gateway-sync cat /tmp/gateway-sync-status.json </dev/null 2>/dev/null || true)"
   case "$status" in
+    *'"status":"ok"'*'"failedAgents":'*)
+      echo "warning: gateway-sync could not set up agents for billing (fix their connection or model in Paperclip; spend of other agents is not affected): ${status#*\"failedAgents\":}" >&2 ;;
     *'"status":"ok"'*) ;;
     *'"status":"account-missing"'*)
       echo "warning: gateway-sync cannot write gateway spend to Paperclip: no account. Set PAPERCLIP_SYNC_EMAIL and PAPERCLIP_SYNC_PASSWORD (the emergency admin) in $SECRETS_FILE and deploy again." >&2 ;;

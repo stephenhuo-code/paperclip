@@ -150,6 +150,16 @@ describe("deploy.sh", () => {
     });
   }
 
+  it("warns about agents gateway-sync could not set up, and still deploys", () => {
+    const result = box.run("deploy.sh", ["production", NEW], {
+      FAKE_HEALTH_BODY: healthy(NEW),
+      FAKE_GATEWAY_SYNC_STATUS: JSON.stringify({ status: "ok", at: "2026-10-19T08:00:00Z", failedAgents: [{ name: "CEO", error: "HTTP 422 validation failed" }] }),
+    });
+    assert.equal(result.status, 0, result.output);
+    assert.match(result.output, /warning: gateway-sync could not set up agents/i);
+    assert.match(result.output, /CEO/);
+  });
+
   it("prints no gateway-sync warning when write-back is ok", () => {
     const result = box.run("deploy.sh", ["production", NEW], {
       FAKE_HEALTH_BODY: healthy(NEW), FAKE_GATEWAY_SYNC_STATUS: JSON.stringify({ status: "ok", at: "2026-10-19T08:00:00Z", posted: 2 }),

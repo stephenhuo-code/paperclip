@@ -116,8 +116,11 @@ export function createPaperclipClient({ baseUrl, origin = baseUrl, email, passwo
 
 const asList = (value, key) => (Array.isArray(value) ? value : value?.[key] ?? []);
 
+const agentFingerprint = (agent) => JSON.stringify([agent.adapterType, agent.adapterConfig ?? {}, agent.runtimeConfig?.aiConnection ?? null]);
+
 async function reconcileAgents({ paperclip, config, state, log }, stats) {
   state.missingConnection ??= new Set();
+  state.failedAgents ??= new Map();
   const notViaGateway = [];
   if (!normalizeGatewayUrl(config.gatewayUrl)) {
     if (!state.warnedNoGatewayUrl) log("gateway-url-missing", { hint: "set PAPERCLIP_GATEWAY_URL in environments/<env>.env" });
@@ -140,30 +143,38 @@ async function reconcileAgents({ paperclip, config, state, log }, stats) {
     state.missingConnection.delete(company.id);
     for (const agent of agents) {
       const result = reconcileAgent(agent, { gatewayConnectionIds: gateways, launcher: config.launcher });
-      if (result.action === "patch") {
+      if (result.action === "skip") {
+        notViaGateway.push({ name: agent.name, reason: result.reason });
+        continue;
+      }
+      if (result.action !== "patch") { state.failedAgents.delete(agent.id); continue; }
+      // Paperclip validates the agent's connection and model on every save, by
+      // calling the model. After a failure, wait for the operator to change the
+      // agent instead of paying for a validation call every round.
+      const fingerprint = agentFingerprint(agent);
+      const failed = state.failedAgents.get(agent.id);
+      if (failed?.fingerprint === fingerprint) { stats.failedAgents.push({ name: agent.name, error: failed.error }); continue; }
+      try {
         await paperclip.patch(`/api/agents/${agent.id}`, { adapterConfig: result.adapterConfig });
+        state.failedAgents.delete(agent.id);
         stats.patched++;
         log("launcher-set", { agent: agent.name });
-      } else if (result.action === "skip") {
-        notViaGateway.push({ name: agent.name, reason: result.reason });
+      } catch (error) {
+        state.failedAgents.set(agent.id, { fingerprint, error: error.message });
+        stats.failedAgents.push({ name: agent.name, error: error.message });
+        log("launcher-failed", { agent: agent.name, error: error.message });
       }
     }
   }
   return notViaGateway;
 }
 
-/** One round: fill in launchers, then write back the last window of spend. */
-export async function runOnce(deps) {
-  const { db, paperclip, config, now, state, log } = deps;
-  const stats = { patched: 0, posted: 0, failed: 0, unattributed: { count: 0, usd: 0 } };
-  const notViaGateway = await reconcileAgents(deps, stats);
-
+async function writeBack({ db, paperclip, config, now, log }, stats) {
   const since = new Date(now().getTime() - config.windowMs).toISOString();
   const rows = (await db.spendRows(since)).filter((r) => r.status !== "failure" && Number(r.spend) > 0);
   const tagged = rows.map((r) => ({ row: r, ...parseRunTags(r.request_tags) }));
   const runIds = [...new Set(tagged.map((t) => t.runId).filter(Boolean))];
   const runs = new Map((runIds.length ? await db.runs(runIds) : []).map((r) => [r.id, r]));
-
   for (const { row, runId } of tagged) {
     const run = runId ? runs.get(runId) : undefined;
     if (!run) {
@@ -179,6 +190,19 @@ export async function runOnce(deps) {
       log("write-failed", { requestId: row.request_id, error: error.message });
     }
   }
+}
+
+/**
+ * One round. Spend is written back first, and agent setup runs separately:
+ * a problem with one agent never holds up anyone's spend. The first error of
+ * the round is returned in stats.error (for the status file).
+ */
+export async function runOnce(deps) {
+  const { config, now, state, log } = deps;
+  const stats = { patched: 0, posted: 0, failed: 0, unattributed: { count: 0, usd: 0 }, failedAgents: [], error: null };
+  try { await writeBack(deps, stats); } catch (error) { stats.error ??= error; log("write-back-failed", { error: error.message }); }
+  let notViaGateway = [];
+  try { notViaGateway = await reconcileAgents(deps, stats); } catch (error) { stats.error ??= error; log("agent-setup-failed", { error: error.message }); }
 
   const last = state.lastReportAt ?? 0;
   if (now().getTime() - last >= config.reportEveryMs) {
@@ -194,7 +218,8 @@ export function syncStatus({ accountConfigured, gatewayUrl, stats, error, at }) 
   const base = { at: at.toISOString() };
   if (!accountConfigured) return { ...base, status: "account-missing" };
   if (error) return { ...base, status: /sign-in failed/i.test(error.message) ? "login-failed" : "error", error: error.message };
-  const counts = { posted: stats?.posted ?? 0, patched: stats?.patched ?? 0, failed: stats?.failed ?? 0 };
+  const counts = { posted: stats?.posted ?? 0, patched: stats?.patched ?? 0, failed: stats?.failed ?? 0,
+    ...(stats?.failedAgents?.length ? { failedAgents: stats.failedAgents } : {}) };
   if (!normalizeGatewayUrl(gatewayUrl)) return { ...base, status: "gateway-url-missing", ...counts };
   return { ...base, status: "ok", ...counts };
 }

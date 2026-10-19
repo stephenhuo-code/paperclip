@@ -107,7 +107,7 @@ describe("reconcileAgent", () => {
 });
 
 // Fake Paperclip HTTP API for the client and the loop.
-function fakePaperclip({ agents = [], connections = [], failCostEvents = false } = {}) {
+function fakePaperclip({ agents = [], connections = [], failCostEvents = false, failPatchFor = new Set() } = {}) {
   const calls = [];
   let session = null, logins = 0, expireOnce = false;
   const fetchImpl = async (url, init = {}) => {
@@ -127,7 +127,12 @@ function fakePaperclip({ agents = [], connections = [], failCostEvents = false }
     if (route === "/api/companies") return json(200, [{ id: "company-1" }]);
     if (route === "/api/companies/company-1/ai-connections") return json(200, { connections });
     if (route === "/api/companies/company-1/agents") return json(200, agents);
-    if (method === "PATCH" && route.startsWith("/api/agents/")) return json(200, { id: route.split("/")[3] });
+    if (method === "PATCH" && route.startsWith("/api/agents/")) {
+      const id = route.split("/")[3];
+      return failPatchFor.has(id)
+        ? json(422, { error: "The selected AI connection failed validation in this agent's environment.", code: "ai_connection_validation_failed" })
+        : json(200, { id });
+    }
     if (method === "POST" && route === "/api/companies/company-1/cost-events") {
       return failCostEvents ? json(500, { error: "boom" }) : json(201, { id: `ce-${body.idempotencyKey}` });
     }
@@ -210,7 +215,7 @@ describe("runOnce", () => {
     assert.ok(!second.logs.some(([e]) => e === "unattributed" || e === "not-via-gateway"), "not again within the hour");
   });
 
-  it("fills in the launcher before writing spend, without touching other agents", async () => {
+  it("writes spend before filling in the launcher, without touching other agents", async () => {
     const agents = [
       { id: "a1", name: "AI情报员", adapterType: "claude_local", adapterConfig: { model: "deepseek-chat" }, runtimeConfig: { aiConnection: { connectionId: "conn-gw" } } },
       { id: "a2", name: "CFO", adapterType: "claude_local", adapterConfig: { agentCommand: "/opt/custom" }, runtimeConfig: { aiConnection: { connectionId: "conn-gw" } } },
@@ -221,7 +226,7 @@ describe("runOnce", () => {
     const patches = fake.calls.filter((c) => c.method === "PATCH");
     assert.deepEqual(patches.map((p) => [p.route, p.body]), [["/api/agents/a1", { adapterConfig: { model: "deepseek-chat", agentCommand: LAUNCHER } }]]);
     const order = fake.calls.map((c) => c.method);
-    assert.ok(order.indexOf("PATCH") < fake.calls.findIndex((c) => c.route.endsWith("/cost-events")));
+    assert.ok(fake.calls.findIndex((c) => c.route.endsWith("/cost-events")) < order.indexOf("PATCH"), "spend is never held up by agent setup");
     assert.equal(stats.patched, 1);
   });
 
@@ -272,6 +277,58 @@ describe("runOnce", () => {
   });
 });
 
+describe("runOnce: agent setup failures never block write-back", () => {
+  const NOW = new Date("2026-10-19T03:00:00Z");
+  const url = { baseUrl: "https://llm.example.cn" };
+  const gw = { id: "conn-gw", name: "x", status: "connected", routing: url };
+  const onGateway = (id, name, model = "deepseek-v4-pro") => ({ id, name, adapterType: "claude_local", adapterConfig: { model }, runtimeConfig: { aiConnection: { connectionId: "conn-gw" } } });
+  const make = (fake, state = {}, rows = [row()]) => {
+    const logs = [];
+    return { logs, d: {
+      db: { async spendRows() { return rows; }, async runs(ids) { return [run].filter((r) => ids.includes(r.id)); } },
+      paperclip: createPaperclipClient({ baseUrl: "https://agents.example.cn", email: "e", password: "p", fetchImpl: fake.fetchImpl }),
+      config: { launcher: LAUNCHER, gatewayUrl: "https://llm.example.cn", windowMs: 2 * 3600_000, reportEveryMs: 3600_000 },
+      now: () => NOW, state, log: (e, f) => logs.push([e, f]),
+    } };
+  };
+
+  it("writes spend even when setting up an agent fails, and still sets up the others", async () => {
+    const agents = [onGateway("bad", "CEO"), onGateway("good", "CFO")];
+    const fake = fakePaperclip({ connections: [gw], agents, failPatchFor: new Set(["bad"]) });
+    const { d, logs } = make(fake);
+    const stats = await runOnce(d);
+    assert.equal(stats.posted, 1, "spend written back");
+    assert.equal(stats.patched, 1, "the other agent was set up");
+    assert.deepEqual(stats.failedAgents.map((a) => a.name), ["CEO"]);
+    assert.match(stats.failedAgents[0].error, /422/);
+    assert.ok(logs.some(([e, f]) => e === "launcher-failed" && f.agent === "CEO"));
+  });
+
+  it("does not retry a failed agent until its configuration changes", async () => {
+    const agents = [onGateway("bad", "CEO")];
+    const fake = fakePaperclip({ connections: [gw], agents, failPatchFor: new Set(["bad"]) });
+    const state = {};
+    await runOnce(make(fake, state).d);
+    await runOnce(make(fake, state).d);
+    const patches = () => fake.calls.filter((c) => c.method === "PATCH").length;
+    assert.equal(patches(), 1, "one validation attempt, not one every round");
+    agents[0].adapterConfig = { model: "MiniMax-M3" };
+    const after = await runOnce(make(fake, state).d);
+    assert.equal(patches(), 2, "retried after the operator changed the agent");
+    assert.equal(after.failedAgents.length, 1, "still reported while it keeps failing");
+  });
+
+  it("writes spend even when listing agents fails", async () => {
+    const fake = fakePaperclip({ connections: [gw] });
+    const inner = fake.fetchImpl;
+    fake.fetchImpl = async (u, init) => (new URL(u).pathname.endsWith("/agents") ? new Response("{}", { status: 500 }) : inner(u, init));
+    const { d } = make(fake);
+    const stats = await runOnce(d);
+    assert.equal(stats.posted, 1);
+    assert.match(stats.error.message, /500/);
+  });
+});
+
 describe("syncStatus", () => {
   const at = new Date("2026-10-19T08:00:00Z");
   it("is ok after a successful round", () => {
@@ -283,5 +340,10 @@ describe("syncStatus", () => {
     assert.equal(syncStatus({ accountConfigured: true, gatewayUrl: "https://x", error: new Error("Paperclip sign-in failed (HTTP 401)"), at }).status, "login-failed");
     assert.equal(syncStatus({ accountConfigured: true, gatewayUrl: "https://x", error: new Error("fetch failed"), at }).status, "error");
     assert.equal(syncStatus({ accountConfigured: true, gatewayUrl: null, stats: { posted: 0, patched: 0, failed: 0 }, at }).status, "gateway-url-missing");
+  });
+  it("lists agents that could not be set up", () => {
+    const s = syncStatus({ accountConfigured: true, gatewayUrl: "https://x", stats: { posted: 1, patched: 0, failed: 0, failedAgents: [{ name: "CEO", error: "HTTP 422" }] }, at });
+    assert.equal(s.status, "ok");
+    assert.deepEqual(s.failedAgents, [{ name: "CEO", error: "HTTP 422" }]);
   });
 });

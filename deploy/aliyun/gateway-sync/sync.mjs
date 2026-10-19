@@ -72,7 +72,8 @@ async function round() {
   } else {
     try {
       stats = await runOnce({ db, paperclip, config, now: () => new Date(), state, log });
-      if (stats.patched || stats.posted || stats.failed) log("round", stats);
+      error = stats.error ?? undefined;
+      if (stats.patched || stats.posted || stats.failed) log("round", { ...stats, error: stats.error?.message });
     } catch (e) {
       error = e;
       log("round-failed", { error: e.message });
