@@ -68,7 +68,7 @@ DeepSeek 在真实任务中有大量缓存命中（第二轮只调用两次、�
 
 1. **按项目归集不能靠 LiteLLM + 时间匹配**：同一 agent 会并发运行，时间窗口重叠，无法判断一笔花费属于哪个任务 / 项目。
 2. 要让 LiteLLM 直接按项目统计，必须每次运行带上项目 / 运行标签（`x-litellm-tags`），这需要修改 Paperclip（按运行设置请求头）。因此"Paperclip 不用修改"的前提不成立。
-3. **Paperclip 自己已经按运行记录了准确的 token 数，并带有项目**，与 LiteLLM 相差约 2%。缺的只是单价。用 Paperclip 的 token × 单价表计价（spec 005 的做法）即可按 agent / 项目执行预算，比经 LiteLLM 同步更直接。
+3. **Paperclip 自己已经按运行记录了准确的 token 数，并带有项目**，与 LiteLLM 相差约 2%。缺的只是单价。用 Paperclip 的 token × 单价表计价（在 Paperclip 内计价）即可按 agent / 项目执行预算，比经 LiteLLM 同步更直接。
 4. LiteLLM 仍可作为统一接入层（集中管理上游 Key、按 Key 限额作为兜底），但不是计价和项目预算的必要条件。
 
 ## 2026-10-17 第三阶段：按运行打标签并写回 Paperclip（方案②）

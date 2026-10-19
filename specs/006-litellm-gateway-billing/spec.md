@@ -4,11 +4,11 @@
 
 **Created**: 2026-10-17
 
-**Status**: Draft
+**Status**: 已上线（2026-10-19，阿里云生产；提交 `442bb9c32`、`0144a7e5e`、`4991854de`）
 
 **Input**: 采用验证过的方案②：所有模型经一个模型网关（LiteLLM）统一接入；网关有管理界面和访问地址，在界面中设置每个模型的单价；每次模型调用带上 Paperclip 的运行和任务标识，网关按单价计费，再按运行写回 Paperclip，由 Paperclip 现有的公司 / agent / 项目预算执行。上游看到的是实际调用方（Claude Code）的标识。不修改 Paperclip 代码。
 
-**Related**: [005](../005-admin-pricing/spec.md)（在 Paperclip 内计价，本功能替代它）；验证记录 [deploy/aliyun/experiments/litellm-verify/REPORT.md](../../deploy/aliyun/experiments/litellm-verify/REPORT.md)
+**Related**: 验证记录 [deploy/aliyun/experiments/litellm-verify/REPORT.md](../../deploy/aliyun/experiments/litellm-verify/REPORT.md)
 
 ## Clarifications
 
@@ -131,4 +131,3 @@
 - 单价以美元填写；会员 / 套餐类模型填写等价单价。
 - Paperclip 自身记录的费用（工具自报或 0）保留不动，与写回的网关花费并存；预算以写回的花费为主要来源。
 - 网关管理界面使用网关自带的管理员账号，不接入 Keycloak 单点登录。
-- spec 005（在 Paperclip 内计价）由本功能替代，不再实施。
