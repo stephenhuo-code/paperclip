@@ -130,6 +130,33 @@ Paperclip 登录页和 Keycloak 登录页显示的名称与 logo 由部署配置
 
 `PAPERCLIP_BRAND_NAME` 留空时两个登录页恢复 Paperclip 和 Keycloak 的默认样子。
 
+### 1.4 新增组织
+
+另一个组织（例如另一家客户）要使用平台时，在服务器上运行：
+
+```sh
+cp -p /opt/paperclip/.env /opt/paperclip/.env.bak-$(date +%F)   # 先备份配置
+/opt/paperclip/deploy/scripts/first-run.sh production --add-org
+```
+
+按提示输入：
+
+| 提示 | 填什么 |
+|---|---|
+| Organization alias | 组织别名，只能用小写字母、数字和 `-`，如 `beta`；不能用首个组织的别名 |
+| Organization name | 组织名称，如 `Beta 科技`（Keycloak 中已有该别名的组织时不问） |
+| Email domain | 该组织员工的邮箱域名，如 `beta.com`；已被其他组织使用时脚本报错退出 |
+| Company name | Paperclip 中的公司名称；已有同名公司时可选"使用已有"或"新建" |
+| Proceed? | 核对汇总后输入 `y` |
+
+脚本用 `.env` 中的写回账号（2.5）登录 Paperclip 建公司，**不需要输入密码**；写回账号缺失或登录失败时才提示输入应急密码（最多 3 次，错误时不做任何改动）。新公司的 owner 是实例管理员。完成后自动重新部署，原有组织的关联保持不变。可重复运行，已完成的步骤会跳过。
+
+脚本结束后还要做三件事：
+
+1. **加员工**：在 Keycloak 管理台把该组织的员工加入新组织（同 1.1 第 5 步）。
+2. **指定负责人**：负责人企业登录一次后，在 Paperclip 切换到新公司，**Settings → Members** 中把负责人设为管理员。
+3. **建网关连接**：AI 连接按公司隔离，新公司看不到原公司的网关连接。切换到新公司，按 2.3 建一个 Messages API 连接（Provider URL 同为 `https://llm.ai-datum.net`，可以用同一个网关 Key）。之后该公司的 agent 选这个连接即自动计费（2.4）。
+
 ---
 
 ## 第二章 模型网关：统一接入与计费

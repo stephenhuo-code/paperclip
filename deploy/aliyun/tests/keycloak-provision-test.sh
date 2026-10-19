@@ -119,4 +119,19 @@ check "kcadm sets a password read from stdin and logs in with a password read fr
     'IFS= read -r password && /opt/keycloak/bin/kcadm.sh config credentials --config "$1" --server http://localhost:8080 --realm master --user stdin-admin --password "$password" >/dev/null && echo ok' \
     kcadm /tmp/stdin-test.config)" "ok"
 
+# specs/004-first-run-add-org: first-run.sh --add-org creates another organization
+# with these arguments, and relies on Keycloak refusing a domain already in use.
+NEW_ORG=$(KC create organizations -r dw -s "name=Beta Inc" -s alias=beta -s enabled=true \
+  -s 'domains=[{"name":"beta.example.cn"}]' -i 2>&1)
+check "a second organization can be created" "$?" "0"
+check "the second organization has the alias and name" \
+  "$(KC get "organizations/$NEW_ORG" -r dw --fields alias,name,enabled --format csv --noquotes)" "beta,Beta Inc,true"
+check "the second organization has the domain" \
+  "$(KC get "organizations/$NEW_ORG" -r dw --fields 'domains(name)' --format csv --noquotes)" "beta.example.cn"
+TAKEN=$(KC create organizations -r dw -s "name=Gamma" -s alias=gamma -s enabled=true \
+  -s 'domains=[{"name":"example.cn"}]' -i 2>&1)
+check "an organization with a domain already in use is refused" "$?" "1"
+echo "      Keycloak said: $TAKEN"
+check "the refusal mentions the domain" "$(printf '%s' "$TAKEN" | grep -ci domain | tr -d ' ' | sed 's/^[1-9][0-9]*$/yes/')" "yes"
+
 exit "$FAILED"

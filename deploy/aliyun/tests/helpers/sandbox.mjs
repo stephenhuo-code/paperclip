@@ -67,7 +67,20 @@ case "$name" in
           *" get organizations/"*"/members "*)
             if [ -n "${'${FAKE_KC_REALM_MEMBER:-}'}" ]; then echo "$FAKE_KC_REALM_MEMBER"; fi
             cat "$FAKE_STATE/kc-members" ;;
-          *" get organizations "*) echo "org-1,acme" ;;
+          *" get organizations "*)
+            # FAKE_KC_ORGS: "id,alias" rows (\n-separated); plus any created below.
+            printf '%b\n' "${'${FAKE_KC_ORGS:-org-1,acme}'}"
+            cat "$FAKE_STATE/kc-orgs" 2>/dev/null || true ;;
+          *" create organizations "*)
+            if [ "${'${FAKE_KC_ORG_DOMAIN_TAKEN:-0}'}" = 1 ]; then
+              echo "Domain is already linked to organization Acme in realm $realm" >&2
+              exit 1
+            fi
+            alias="${'${sets#* alias=}'}"; alias="${'${alias%% *}'}"
+            n=$(( $(cat "$FAKE_STATE/kc-org-n" 2>/dev/null || echo 0) + 1 ))
+            echo "$n" > "$FAKE_STATE/kc-org-n"
+            echo "org-new-$n,$alias" >> "$FAKE_STATE/kc-orgs"
+            echo "org-new-$n" ;;
           *" create organizations/"*"/members "*)
             id="$(printf '%s' "$body" | tr -d '"')"; echo "$id" >> "$FAKE_STATE/kc-members" ;;
         esac
@@ -134,6 +147,12 @@ case "$name" in
           name="$(printf '%s' "$request" | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')"
           echo "$mail|$name" > "$FAKE_STATE/pc-signup"
         fi ;;
+      */api/auth/sign-in/email)
+        # Fails for FAKE_SIGNIN_FAIL=1, or for any password but FAKE_SIGNIN_PASSWORD when set.
+        pw="$(printf '%s' "$request" | sed -n 's/.*"password":"\([^"]*\)".*/\1/p')"
+        if [ "${'${FAKE_SIGNIN_FAIL:-0}'}" = 1 ] || { [ -n "${'${FAKE_SIGNIN_PASSWORD:-}'}" ] && [ "$pw" != "$FAKE_SIGNIN_PASSWORD" ]; }; then
+          status=401 response='{"code":"INVALID_EMAIL_OR_PASSWORD","message":"Invalid email or password"}'
+        fi ;;
       */api/invites/*/accept)
         cp "$FAKE_STATE/pc-signup" "$FAKE_STATE/pc-admin" 2>/dev/null || true ;;
       */api/companies)
@@ -141,8 +160,10 @@ case "$name" in
           status=500 response='{"error":"Internal server error"}'
         else
           name="$(printf '%s' "$request" | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')"
-          echo "company-new|$name" >> "$FAKE_STATE/pc-companies"
-          status=201 response="{\"id\":\"company-new\",\"name\":\"$name\"}"
+          cn=$(( $(cat "$FAKE_STATE/company-n" 2>/dev/null || echo 0) + 1 ))
+          echo "$cn" > "$FAKE_STATE/company-n"
+          echo "company-new-$cn|$name" >> "$FAKE_STATE/pc-companies"
+          status=201 response="{\"id\":\"company-new-$cn\",\"name\":\"$name\"}"
         fi ;;
     esac
     if [ -n "$out" ]; then printf '%s' "$response" > "$out"; fi

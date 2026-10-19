@@ -116,6 +116,8 @@ ACR_USERNAME=<ACR 用户名> ACR_PASSWORD=<ACR 密码> ./scripts/bootstrap.sh pr
 
 密码输入不回显，不会出现在屏幕、日志和命令历史里。员工之后统一在 Keycloak 管理台添加（见下一节）。
 
+新增组织（另一个 Keycloak 组织及其 Paperclip 公司）用 `first-run.sh production --add-org`，原有组织的关联保持不变，见手册 1.4。
+
 ### 备用：手动初始化
 
 公网部署不允许在浏览器里直接认领实例。不用脚本时按以下步骤（FR-022）：
